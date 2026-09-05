@@ -1,4 +1,6 @@
-# khazard — 土砂災害警戒区域の判定
+# Kurage 土砂災害ハザードマップ
+
+（リポジトリ・ポート・systemd unit の略称は `khazard`。対外の名前は「Kurage 土砂災害ハザードマップ」）
 
 住所を入れると、国土交通省が公開している土砂災害警戒区域のデータと照らして
 区域の内外を判定します。公開URL: https://kurage.exbridge.jp/khazard.php/

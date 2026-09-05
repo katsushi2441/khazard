@@ -1,4 +1,6 @@
-"""khazard — 住所を入れると土砂災害警戒区域の内外を判定する。
+"""Kurage 土砂災害ハザードマップ（内部の略称 khazard）
+
+住所を入れると土砂災害警戒区域の内外を判定する。
 
 設計の芯（ここを崩さない）:
   1. 判定結果には必ずデータ時点を添える。datasets 表に時点が無いデータは
@@ -34,7 +36,7 @@ ZONE_KIND = {1: "土砂災害警戒区域（イエローゾーン）",
              2: "土砂災害特別警戒区域（レッドゾーン）"}
 PHENOMENON = {1: "急傾斜地の崩壊", 2: "土石流", 3: "地すべり"}
 
-app = FastAPI(title="khazard — 土砂災害警戒区域の判定")
+app = FastAPI(title="Kurage 土砂災害ハザードマップ")
 _rate = {}
 
 
@@ -200,7 +202,7 @@ def healthz():
 
 INDEX = """<!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>土砂災害警戒区域の判定 — khazard</title>
+<title>土砂災害ハザードマップを住所から判定｜Kurage</title>
 <style>
 :root{color-scheme:light}
 body{margin:0;background:#f7f9fc;color:#12202f;font-family:-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.8}
@@ -229,9 +231,10 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 .src a{color:#0a9a8f}
 .err{color:#b3261e;font-weight:700}
 </style></head><body><div class="wrap">
-<h1>土砂災害警戒区域の判定</h1>
+<h1>Kurage 土砂災害ハザードマップ</h1>
 <p class="lead">住所を入れると、国土交通省が公開している土砂災害警戒区域のデータと照らして、
-区域の内外を判定します。判定に使ったデータの時点も必ず表示します。</p>
+イエローゾーン・レッドゾーンの内外を判定します。全国47都道府県・約179万区域を収録。
+判定に使ったデータの時点も必ず表示します。</p>
 <div class="card">
   <form id="f"><input id="q" placeholder="例: 愛知県犬山市大字継鹿尾字川端" autocomplete="off">
   <button id="b">判定する</button></form>
