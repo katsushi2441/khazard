@@ -1,0 +1,14 @@
+# khazard のデータ基盤。商圏分析(kshoken)とは別のDBにして、製品の境界を分ける。
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: khazard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: khazard
+      POSTGRES_PASSWORD: ${KHAZARD_DB_PASS:-khazard_local}
+      TZ: Asia/Tokyo
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data

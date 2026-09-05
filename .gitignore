@@ -1,0 +1,6 @@
+.venv/
+data/raw/
+data/pg/
+data/*.log
+.env
+php/khazard_config.php

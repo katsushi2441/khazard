@@ -1,0 +1,16 @@
+[Unit]
+Description=Kurage 土砂災害警戒区域の判定 (khazard) :18376
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kojima/work/khazard
+Environment=KHAZARD_PORT=18376
+EnvironmentFile=-/home/kojima/work/khazard/.env
+ExecStart=/home/kojima/work/khazard/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 18376
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
