@@ -254,6 +254,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 .faq dt{font-weight:800;margin-top:14px;font-size:15px}
 .faq dd{margin:5px 0 0;padding-left:16px;border-left:3px solid #e5ebf1;color:#37485a}
 .pv{margin:12px 0}
+.note-sm{font-size:12.5px;color:#7d8a97;margin:4px 0 0}
 .pv video{width:100%;height:auto;border-radius:12px;border:1px solid #e5ebf1;background:#000;display:block}
 .cta{display:inline-block;margin-top:8px;padding:12px 22px;font-size:15.5px;font-weight:800;color:#fff;background:#0a9a8f;border-radius:10px;text-decoration:none}
 </style></head><body><div class="wrap">
@@ -318,6 +319,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 
 <h2>30秒でわかる動画</h2>
 <p>実際の画面で、判定から注意書きまでの流れをまとめました。</p>
+<p class="note-sm">冒頭の実写カットは MiniMax H3 を自社サーバーで動かして生成しています。</p>
 <div class="pv">
 <video src="https://kurage.exbridge.jp/pv/khazard-pv-30s.mp4"
        poster="https://kurage.exbridge.jp/pv/khazard-pv-poster.jpg"
