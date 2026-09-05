@@ -253,6 +253,8 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 .t2 th{background:#f4f8fb;width:36%;font-weight:700}
 .faq dt{font-weight:800;margin-top:14px;font-size:15px}
 .faq dd{margin:5px 0 0;padding-left:16px;border-left:3px solid #e5ebf1;color:#37485a}
+.pv{margin:12px 0}
+.pv video{width:100%;height:auto;border-radius:12px;border:1px solid #e5ebf1;background:#000;display:block}
 .cta{display:inline-block;margin-top:8px;padding:12px 22px;font-size:15.5px;font-weight:800;color:#fff;background:#0a9a8f;border-radius:10px;text-decoration:none}
 </style></head><body><div class="wrap">
 <h1>Kurage 土砂災害ハザードマップ</h1>
@@ -314,6 +316,14 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 <dd>置けます。ソースコード一式と設置手順書を同梱した買い切り版を用意しています。住所を外部に送りたくない場合や、自社システムに組み込みたい場合に向きます。</dd>
 </dl>
 
+<h2>30秒でわかる動画</h2>
+<p>実際の画面で、判定から注意書きまでの流れをまとめました。</p>
+<div class="pv">
+<video src="https://kurage.exbridge.jp/pv/khazard-pv-30s.mp4"
+       poster="https://kurage.exbridge.jp/pv/khazard-pv-poster.jpg"
+       controls playsinline preload="none" width="1920" height="1080"></video>
+</div>
+
 <h2>自社サーバーに置く（買い切り版）</h2>
 <p>同じ仕組みを自社のサーバーで動かせます。ソースコード同梱・MITライセンス・外部の有料APIなしで、追加費用はかかりません。</p>
 <p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-lp">買い切り版を見る（税込55,000円）</a></p>
@@ -368,6 +378,10 @@ f.addEventListener('submit',async e=>{
   }catch(err){ r.innerHTML='<p class="err">通信に失敗しました。時間をおいてお試しください。</p>'; }
   finally{ b.disabled=false; }
 });
+(function(){
+  var p=new URLSearchParams(location.search).get('q');
+  if(p){ q.value=p; f.dispatchEvent(new Event('submit',{cancelable:true})); }
+})();
 </script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebApplication","@id":"https://kurage.exbridge.jp/khazard.php/#app","name":"Kurage 土砂災害ハザードマップ","url":"https://kurage.exbridge.jp/khazard.php/","applicationCategory":"BusinessApplication","operatingSystem":"Web","inLanguage":"ja","description":"住所を入れると、土砂災害ハザードマップの警戒区域（イエローゾーン）・特別警戒区域（レッドゾーン）の内外を判定します。全国47都道府県・約179万区域を収録し、判定に使ったデータの時点を必ず表示します。","image":"https://kurage.exbridge.jp/images/khazard-ogp.png","offers":{"@type":"Offer","price":"0","priceCurrency":"JPY","description":"Webでの判定は無料"},"provider":{"@type":"Organization","name":"株式会社エクスブリッジ","url":"https://exbridge.jp/"},"featureList":["土砂災害警戒区域の内外判定","特別警戒区域（レッドゾーン）の判別","現象（急傾斜地の崩壊・土石流・地すべり）の表示","区域の指定年月日の表示","最寄り区域までの距離","判定に使ったデータ時点の表示"],"isBasedOn":{"@type":"Dataset","name":"国土数値情報 土砂災害警戒区域データ（A33）","creator":{"@type":"Organization","name":"国土交通省"},"temporalCoverage":"2026-03-06","url":"https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A33.html"}},{"@type":"FAQPage","@id":"https://kurage.exbridge.jp/khazard.php/#faq","mainEntity":[{"@type":"Question","name":"この判定は不動産の重要事項説明に使えますか。","acceptedAnswer":{"@type":"Answer","text":"そのままでは使えません。本サービスの判定は参考情報であり、公的な証明ではありません。宅地建物取引業者の説明義務は、自治体が公表する最新のハザードマップに基づいて果たしてください。本サービスは、その前の当たりを付ける用途に向いています。"}},{"@type":"Question","name":"データはいつ更新されますか。","acceptedAnswer":{"@type":"Answer","text":"国土数値情報の更新に合わせて取り込み直します。現在のデータ時点は2026-03-06です。判定結果には常にその時点を表示するので、古いまま使われることがありません。"}},{"@type":"Question","name":"「区域外」と出れば安全ということですか。","acceptedAnswer":{"@type":"Answer","text":"いいえ。区域の指定は調査済みで危険と判定された場所に付きます。未調査の場所や、指定の対象外だが傾斜がある場所は区域外になります。また住所の座標は町丁目のおおよその位置なので、実際の敷地が区域内であることもあります。"}},{"@type":"Question","name":"土砂災害警戒区域と特別警戒区域の違いは何ですか。","acceptedAnswer":{"@type":"Answer","text":"土砂災害警戒区域（イエローゾーン）は土砂災害のおそれがある区域で、市町村に警戒避難体制の整備が義務づけられます。土砂災害特別警戒区域（レッドゾーン）は建築物に損壊が生じ住民の生命に著しい危害が生ずるおそれがある区域で、特定の開発行為の制限、建築物の構造規制、移転勧告の対象になります。"}},{"@type":"Question","name":"洪水の浸水想定区域も判定できますか。","acceptedAnswer":{"@type":"Answer","text":"扱っていません。国土数値情報で配布されている都道府県別の洪水浸水想定区域データは2012年版（データ時点 平成23年度）が最新で、2015年の水防法改正前の基準のためです。古い基準で区域外と答えるほうが危険だと判断しました。"}}]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Kurage","item":"https://kurage.exbridge.jp/"},{"@type":"ListItem","position":2,"name":"土砂災害ハザードマップ","item":"https://kurage.exbridge.jp/khazard.php/"}]}]}</script>
 </body></html>"""
