@@ -331,6 +331,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 <p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-lp">買い切り版を見る（税込55,000円）</a></p>
 </section>
 
+<p style="font-size:12.5px;color:#7d8a97;margin-top:10px">議員・政党事務所の方へ: このページを事務所の名前で運用できます → <a href="/bousai-giin.html">地域防災情報サービス</a></p>
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
 住所の座標変換に国土地理院 地名検索APIを利用しています。<br>
