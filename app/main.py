@@ -17,6 +17,7 @@
 """
 import json
 import os
+import re
 import time
 from datetime import date, datetime
 
@@ -332,6 +333,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 </section>
 
 <p style="font-size:12.5px;color:#7d8a97;margin-top:10px">議員・政党事務所の方へ: このページを事務所の名前で運用できます → <a href="/bousai-giin.html">地域防災情報サービス</a></p>
+<p style="font-size:13px;margin-top:14px">主要都市から地域ページへ入る: <a href="area/aichi-nagoya">名古屋</a>・<a href="area/kanagawa-yokohama">横浜</a>・<a href="area/hiroshima-hiroshima">広島</a>・<a href="area/shizuoka-atami">熱海</a>・<a href="area/aichi-toyota">豊田</a>・<a href="area/">地域一覧</a></p>
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
 住所の座標変換に国土地理院 地名検索APIを利用しています。<br>
@@ -393,3 +395,99 @@ f.addEventListener('submit',async e=>{
 @app.get("/", response_class=HTMLResponse)
 def index():
     return INDEX
+
+
+# ---- 地域ページ（「名古屋 ハザードマップ」等の無競合ロングテールを取る） ----
+# 2026-09-06 実測: 名古屋ハザードマップ1,900/指数0・大阪ハザードマップ2,900/指数0。
+# 都市名を主題にした個別ランディングで拾う。CSS/JSは本体INDEXから取り出して共有。
+_STYLE = re.search(r"<style>.*?</style>", INDEX, re.S).group(0)
+# /area/<slug> は1階層深いので相対 fetch を ../ に補正する
+_SCRIPT = re.search(r"<script>(?:(?!application/ld).)*?</script>", INDEX, re.S).group(0).replace("'api/check", "'../api/check")
+
+AREAS = [
+    ("aichi-nagoya", "名古屋市", "愛知県名古屋市守山区上志段味"),
+    ("kanagawa-yokohama", "横浜市", "神奈川県横浜市戸塚区名瀬町"),
+    ("hyogo-kobe", "神戸市", "兵庫県神戸市灘区六甲山町"),
+    ("hiroshima-hiroshima", "広島市", "広島県広島市安佐南区八木"),
+    ("shizuoka-atami", "熱海市", "静岡県熱海市伊豆山"),
+    ("kyoto-kyoto", "京都市", "京都府京都市左京区大原"),
+    ("fukuoka-fukuoka", "福岡市", "福岡県福岡市城南区東油山"),
+    ("nagasaki-nagasaki", "長崎市", "長崎県長崎市稲佐町"),
+    ("osaka-osaka", "大阪市", "大阪府大阪市東住吉区"),
+    ("aichi-toyota", "豊田市", "愛知県豊田市小渡町"),
+]
+AREA_BY_SLUG = {a[0]: a for a in AREAS}
+
+
+def _area_head(city, slug, desc):
+    url = "https://kurage.exbridge.jp/khazard.php/area/" + slug
+    title = city + "のハザードマップ｜土砂災害警戒区域を住所から調べる | Kurage"
+    ga = ('<script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script>'
+          '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}'
+          "gtag('js',new Date());gtag('config','G-BP0650KDFR');</script>")
+    bc = json.dumps({"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Kurage 土砂災害ハザードマップ",
+         "item": "https://kurage.exbridge.jp/khazard.php/"},
+        {"@type": "ListItem", "position": 2, "name": city, "item": url}]}, ensure_ascii=False)
+    faq = json.dumps({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+        {"@type": "Question", "name": city + "のハザードマップ（土砂災害）はどこで調べられますか？",
+         "acceptedAnswer": {"@type": "Answer", "text": "このページで" + city + "の住所を入れると、土砂災害警戒区域（イエロー／レッド）の内外が表示されます。国土交通省のデータにもとづく参考情報で、最終確認は自治体の最新ハザードマップで行ってください。"}}]}, ensure_ascii=False)
+    return ('<!doctype html><html lang="ja"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            "<title>" + title + "</title>"
+            '<meta name="description" content="' + desc + '">'
+            '<link rel="canonical" href="' + url + '">'
+            '<meta property="og:type" content="website">'
+            '<meta property="og:title" content="' + city + 'のハザードマップ（土砂災害）｜Kurage">'
+            '<meta property="og:description" content="' + desc + '">'
+            '<meta property="og:url" content="' + url + '">'
+            '<meta property="og:image" content="https://kurage.exbridge.jp/pv/khazard-pv-poster.jpg">'
+            '<meta name="twitter:card" content="summary_large_image">'
+            '<script type="application/ld+json">' + bc + '</script>'
+            '<script type="application/ld+json">' + faq + '</script>' + ga)
+
+
+@app.get("/area/{slug}", response_class=HTMLResponse)
+def area(slug: str):
+    a = AREA_BY_SLUG.get(slug)
+    if not a:
+        raise HTTPException(404, "地域が見つかりません")
+    _, city, example = a
+    exq = requests.utils.quote(example)
+    desc = (city + "の住所を入れると、土砂災害警戒区域（イエローゾーン）・特別警戒区域（レッドゾーン）の内外を判定します。"
+            "全国約179万区域を収録。無料・登録不要。判定に使ったデータの時点も表示します。")
+    body = (
+        '<h1><a href="/khazard.php/">' + city + "のハザードマップ（土砂災害）</a></h1>"
+        '<p class="lead">' + city + "の住所を入れると、その地点が<strong>土砂災害警戒区域（イエロー）</strong>か"
+        "<strong>特別警戒区域（レッド）</strong>かを判定します。現象（急傾斜地の崩壊・土石流・地すべり）と"
+        "指定年月日、判定に使ったデータの時点も表示します。全国約179万区域を収録。</p>"
+        '<div class="card"><form id="f">'
+        '<input id="q" placeholder="例: ' + example + '" value="' + example + '" autocomplete="off">'
+        '<button id="b">判定する</button></form><div class="res" id="r"></div></div>'
+        '<section class="doc">'
+        "<h2>" + city + "で土砂災害の警戒区域を調べる</h2>"
+        "<p>" + city + "の住所を入れると、土砂災害警戒区域の内外と区域区分を返します。"
+        "崖のそば・傾斜地では区域に指定されていることがあります。国土交通省が公表したデータにもとづきます。</p>"
+        "<h2>あわせて確認したい方へ</h2>"
+        '<p>' + city + "で津波の浸水想定は "
+        '<a href="/ktsunami.php/area/' + slug + '">津波浸水想定マップ</a>、災害のとき使える避難所は '
+        '<a href="/krefuge.php/?q=' + exq + '">避難所マップ</a> で調べられます。'
+        '全国版は <a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> です。</p></section>'
+        '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
+        "／住所検索: 国土地理院 地名検索API</p>")
+    html = _area_head(city, slug, desc) + _STYLE + '</head><body><div class="wrap">' + body + _SCRIPT + "</body></html>"
+    return HTMLResponse(html)
+
+
+@app.get("/area", response_class=HTMLResponse)
+@app.get("/area/", response_class=HTMLResponse)
+def area_index():
+    links = "".join('<li><a href="/khazard.php/area/' + s + '">' + c + "のハザードマップ（土砂災害）</a></li>"
+                    for s, c, _ in AREAS)
+    desc = "主要都市ごとの土砂災害ハザードマップの入口です。住所を入れると警戒区域の内外が分かります。"
+    html = (_area_head("地域一覧", "index", desc) + _STYLE
+            + '</head><body><div class="wrap"><h1>地域から土砂災害の警戒区域を調べる</h1>'
+            '<p class="lead">主要都市ごとの入口です。全国版は '
+            '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> をどうぞ。</p>'
+            '<ul style="font-size:15px;line-height:2.2">' + links + "</ul></div></body></html>")
+    return HTMLResponse(html)
