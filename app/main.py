@@ -557,6 +557,10 @@ _LLMS_BODY = """# Kurage 土砂災害ハザードマップ
 - 座標で判定するAPI: https://kurage.exbridge.jp/khazard.php/api/at?lat=<緯度>&lon=<経度>
 - API: https://kurage.exbridge.jp/khazard.php/api/check?q=<住所>
 
+## 買い切り版
+- 商品ページ: https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86
+- 税込55,000円。ソースコード（MIT）・データ取り込みスクリプト・設置手順書を同梱。自社サーバーで動かせる。
+
 ## 関連（同じ運営の防災ツール）
 - 洪水・内水・高潮: https://kurage.exbridge.jp/kflood.php/
 - 津波浸水想定: https://kurage.exbridge.jp/ktsunami.php/
@@ -709,6 +713,7 @@ th{background:#eef6f5;white-space:nowrap}
 </form>
 <p class="muted" style="margin-top:16px">背景地図: 国土地理院 淡色地図。区域: 国土数値情報「土砂災害警戒区域データ(A33)」国土交通省を加工して作成。<br>
 本サービスの判定は参考情報です。宅地建物取引業法の重要事項説明など、根拠を示す必要がある用途には使えません。</p>
+<p class="muted" style="margin-top:14px">このシステムは買い切りで自社サーバーに設置できます → <a href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-map" target="_blank" rel="noopener" style="color:#0a726b">Kurage 土砂災害ハザードマップ（税込55,000円・ソースコード同梱）</a></p>
 </main>
 <script>
 var BASE='../';
