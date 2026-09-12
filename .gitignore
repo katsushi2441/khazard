@@ -4,3 +4,17 @@ data/pg/
 data/*.log
 .env
 php/khazard_config.php
+
+# 秘密・バックアップ（.env だけでなく派生形も必ず）
+
+# Python
+__pycache__/
+*.pyc
+
+# 生成物（MVTタイルのディスクキャッシュ。再生成できる）
+data/tiles/
+.env.*
+*.env
+*.env.bak*
+*.bak
+*.bak-*

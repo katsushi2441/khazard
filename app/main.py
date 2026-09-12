@@ -33,9 +33,31 @@ GSI = "https://msearch.gsi.go.jp/address-search/AddressSearch"
 STALE_YEARS = 5     # これより古いデータを使ったら注意書きを出す
 NEAR_M = 250        # これより近くに区域があれば「区域外」と言い切らない（住所は町丁目の代表点のため）
 
+# 区域区分（A33 の ksj:coz）。
+# 公式コードリスト CodeOfZone.html には 1・2 しか載っていないが、
+# 実データには 3・4 が 25,754件ある（15県）。意味は実測で確定させた（2026-09-13）:
+#   ・3/4 は指定年月日が **全件 9999**（例外 0件。1/2 には実日付が入る）
+#   ・千葉県の「データ利用時の注意事項」が原典レイヤ名を列挙しており、そこに
+#     「(指定予定)土砂災害警戒区域（急傾斜地の崩壊）」「(指定予定)土砂災害特別警戒区域（急傾斜地の崩壊）」がある
+#   ・実際、千葉県の 3/4 は急傾斜地の崩壊のみ（土石流・地すべりは 0件）で上記と一致する
+#   ・3 の区域は既指定区域と重ならないものが大半＝同じ区域の重複登録ではない
+# → 3=指定予定の警戒区域、4=指定予定の特別警戒区域。
+# **指定予定はまだ法的な指定を受けていない。** 「区域内」と一緒くたにすると、
+# 現時点で存在しない建築制限があるかのように誤解させるので、必ず分けて返す。
 ZONE_KIND = {1: "土砂災害警戒区域（イエローゾーン）",
-             2: "土砂災害特別警戒区域（レッドゾーン）"}
+             2: "土砂災害特別警戒区域（レッドゾーン）",
+             3: "土砂災害警戒区域（指定予定）",
+             4: "土砂災害特別警戒区域（指定予定）"}
+PLANNED_KINDS = (3, 4)      # まだ指定されていない＝法的効果はない
 PHENOMENON = {1: "急傾斜地の崩壊", 2: "土石流", 3: "地すべり"}
+
+
+def fmt_designated(dt):
+    """指定年月日。A33 では不明・未定を 9999年 で表す（1/2 にも 33,231件ある）。
+    そのまま出すと「9999-01-01に指定」と読めてしまうので必ず言い換える。"""
+    if not dt:
+        return None
+    return "不明" if dt.year >= 9999 else str(dt)
 
 app = FastAPI(title="Kurage 土砂災害ハザードマップ")
 _rate = {}
@@ -134,18 +156,21 @@ def check(request: Request, q: str):
                        FROM hazard_sediment
                        WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s,%s),6668))
                        ORDER BY zone_kind DESC""", (g["lon"], g["lat"]))
-        hits = [dict(zone_kind=zk, zone_kind_label=ZONE_KIND.get(zk, "不明"),
+        rows = [dict(zone_kind=zk, zone_kind_label=ZONE_KIND.get(zk, "不明"),
                      phenomenon=ph, phenomenon_label=PHENOMENON.get(ph, "不明"),
                      zone_no=zn, zone_name=nm, address=ad,
-                     designated_on=str(dt) if dt else None)
+                     designated_on=fmt_designated(dt))
                 for zk, ph, zn, nm, ad, dt in cur.fetchall()]
+        # 指定済みと指定予定は法的な意味がまったく違うので分ける
+        hits = [r for r in rows if r["zone_kind"] not in PLANNED_KINDS]
+        planned = [r for r in rows if r["zone_kind"] in PLANNED_KINDS]
 
         # 区域外と言い切る前に、近くに区域があるかを見る。
         # 「すぐ隣が区域」を黙って区域外と返すと判断を誤らせるため。
         cur.execute("""SELECT round(ST_Distance(geom::geography,
                          ST_SetSRID(ST_MakePoint(%s,%s),6668)::geography)::numeric) AS m,
                          zone_kind, zone_name
-                       FROM hazard_sediment
+                       FROM hazard_sediment WHERE zone_kind NOT IN (3,4)
                        ORDER BY geom <-> ST_SetSRID(ST_MakePoint(%s,%s),6668)
                        LIMIT 1""", (g["lon"], g["lat"], g["lon"], g["lat"]))
         near = cur.fetchone()
@@ -161,6 +186,10 @@ def check(request: Request, q: str):
                         "指定区域はその後に追加・変更されている可能性があります。")
     if hits:
         notes.append("区域内と判定されました。土地の利用や建築に制限がかかる場合があります。")
+    if planned:
+        notes.append("この地点は、都道府県が今後の指定を予定している区域に含まれています。"
+                     "現時点では指定されていないため法律上の制限はかかっていませんが、"
+                     "危険性があると判断されている場所です。指定されると制限の対象になります。")
     elif near and int(near[0]) <= NEAR_M:
         # 住所の座標は町丁目の代表点なので、番地単位の内外は判定できない。
         # 実測では区域の縁から14〜50mずれた代表点が「区域外」と出た（2026-09-05）。
@@ -175,6 +204,8 @@ def check(request: Request, q: str):
         "judged": True,
         "in_hazard_zone": bool(hits),
         "zones": hits,
+        "in_planned_zone": bool(planned),
+        "planned_zones": planned,
         "nearest": (None if hits or not near else
                     {"distance_m": int(near[0]), "zone_kind_label": ZONE_KIND.get(near[1], "不明"),
                      "zone_name": near[2]}),
@@ -334,6 +365,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 </section>
 
 <p style="font-size:12.5px;color:#7d8a97;margin-top:10px">議員・政党事務所の方へ: このページを事務所の名前で運用できます → <a href="/bousai-giin.html">地域防災情報サービス</a></p>
+<p style="font-size:13px;margin-top:14px"><a href="map/"><b>地図で見る</b></a>（区域を地図に重ねて表示・クリックで判定）</p>
 <p style="font-size:13px;margin-top:14px">主要都市から地域ページへ入る: <a href="area/aichi-nagoya">名古屋</a>・<a href="area/kanagawa-yokohama">横浜</a>・<a href="area/hiroshima-hiroshima">広島</a>・<a href="area/shizuoka-atami">熱海</a>・<a href="area/aichi-toyota">豊田</a>・<a href="area/">地域一覧</a></p>
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
@@ -363,6 +395,13 @@ f.addEventListener('submit',async e=>{
         h+='<table><tr><th>区域区分</th><th>現象</th><th>区域名</th><th>指定年月日</th></tr>';
         for(const z of d.zones) h+='<tr><td>'+esc(z.zone_kind_label)+'</td><td>'+esc(z.phenomenon_label)
           +'</td><td>'+esc(z.zone_name)+'</td><td>'+esc(z.designated_on||'—')+'</td></tr>';
+        h+='</table>';
+      }
+      if(d.planned_zones&&d.planned_zones.length){
+        h+='<p style="margin:12px 0 4px"><b>今後の指定が予定されている区域</b>（現時点では指定されておらず、法律上の制限はかかっていません）</p>'
+          +'<table><tr><th>区分</th><th>現象</th><th>区域名</th></tr>';
+        for(const z of d.planned_zones) h+='<tr><td>'+esc(z.zone_kind_label)+'</td><td>'+esc(z.phenomenon_label)
+          +'</td><td>'+esc(z.zone_name)+'</td></tr>';
         h+='</table>';
       }
       if(d.nearest) h+='<p>最も近い区域まで約 '+esc(d.nearest.distance_m)+' m（'+esc(d.nearest.zone_kind_label)+'・'+esc(d.nearest.zone_name)+'）</p>';
@@ -508,9 +547,14 @@ _LLMS_BODY = """# Kurage 土砂災害ハザードマップ
 - **「区域外」は「安全」ではない。** 警戒区域は都道府県が調査して指定した範囲で、
   未指定でも危険がないとは限らない。
 - 住所から求めた座標は町丁目の代表点。正確な区域は自治体の最新ハザードマップで確認すること。
+- **「指定予定」は指定済みではない。** データには都道府県が今後指定する予定の区域が含まれる
+  （15県・25,754件。指定年月日が 9999 で記録されている）。指定予定の区域には現時点で
+  法律上の建築制限はかからない。本サービスは両者を分けて返す（in_hazard_zone / in_planned_zone）。
 
 ## 使い方
 - 住所で調べる: https://kurage.exbridge.jp/khazard.php/?q=<住所>
+- 地図で見る: https://kurage.exbridge.jp/khazard.php/map/ （区域を地図に重ねて表示。クリックした地点を判定）
+- 座標で判定するAPI: https://kurage.exbridge.jp/khazard.php/api/at?lat=<緯度>&lon=<経度>
 - API: https://kurage.exbridge.jp/khazard.php/api/check?q=<住所>
 
 ## 関連（同じ運営の防災ツール）
@@ -523,6 +567,231 @@ _LLMS_BODY = """# Kurage 土砂災害ハザードマップ
 
 # ---- AEO/GEO の標準セット（llms.txt / robots.txt / sitemap.xml）----
 # 他のKurage製品と同じ形にそろえる。AI検索に「何を答えるサイトか」を最初に渡す。
+# ---- 地図（MapLibre + ベクタータイル） ---------------------------------------
+# 区域は179万件あるので GeoJSON では配信できない。PostGIS の ST_AsMVT でタイル化し、
+# 一度作ったタイルはディスクに残す（kflood と同じ作り）。
+TILE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "tiles")
+TILE_SQL = """SELECT ST_AsMVT(q, 'sediment', 4096, 'geom') FROM (
+    SELECT zone_kind AS k, phenomenon AS p,
+           ST_AsMVTGeom(ST_Transform(geom, 3857), ST_TileEnvelope(%(z)s, %(x)s, %(y)s), 4096, 64, true) AS geom
+    FROM hazard_sediment
+    WHERE geom && ST_Transform(ST_TileEnvelope(%(z)s, %(x)s, %(y)s), 6668)) q"""
+TILE_MINZ, TILE_MAXZ = 11, 16
+
+
+@app.get("/tiles/{z}/{x}/{y}.pbf")
+def vector_tile(z: int, x: int, y: int):
+    hdr = {"Cache-Control": "public, max-age=86400"}
+    if z < TILE_MINZ or z > TILE_MAXZ or x < 0 or y < 0 or x >= 2 ** z or y >= 2 ** z:
+        return Response(status_code=204, headers=hdr)
+    path = os.path.join(TILE_DIR, str(z), str(x), f"{y}.pbf")
+    if os.path.exists(path):
+        data = open(path, "rb").read()
+    else:
+        with conn() as c, c.cursor() as cur:
+            cur.execute(TILE_SQL, dict(z=z, x=x, y=y))
+            row = cur.fetchone()
+        data = bytes(row[0]) if row and row[0] else b""
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+    if not data:
+        return Response(status_code=204, headers=hdr)
+    return Response(content=data, media_type="application/vnd.mapbox-vector-tile", headers=hdr)
+
+
+@app.get("/api/at")
+def check_at(request: Request, lat: float, lon: float):
+    """座標での判定（地図クリック用）。住所を介さないので町丁目代表点のズレが無い。"""
+    ip = request.client.host if request.client else "?"
+    if limited(ip, per_min=60):
+        raise HTTPException(429, "アクセスが集中しています。1分ほど待って再度お試しください")
+    with conn() as c, c.cursor() as cur:
+        cur.execute("""SELECT zone_kind, phenomenon, zone_no, zone_name, address, designated_on
+                       FROM hazard_sediment
+                       WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s,%s),6668))
+                       ORDER BY zone_kind DESC""", (lon, lat))
+        rows = [dict(zone_kind=zk, zone_kind_label=ZONE_KIND.get(zk, "不明"),
+                     phenomenon_label=PHENOMENON.get(ph, "不明"),
+                     zone_no=zn, zone_name=nm, address=ad,
+                     designated_on=fmt_designated(dt))
+                for zk, ph, zn, nm, ad, dt in cur.fetchall()]
+        hits = [r for r in rows if r["zone_kind"] not in PLANNED_KINDS]
+        planned = [r for r in rows if r["zone_kind"] in PLANNED_KINDS]
+        out = {"lat": lat, "lon": lon, "in_hazard_zone": bool(hits), "zones": hits,
+               "in_planned_zone": bool(planned), "planned_zones": planned}
+        if not rows:
+            # 区域外と言い切る前に最寄りの区域までの距離を測る（住所判定と同じ方針）。
+            cur.execute("""SELECT round(ST_Distance(geom::geography,
+                             ST_SetSRID(ST_MakePoint(%s,%s),6668)::geography)::numeric) AS m,
+                             zone_kind, zone_name
+                           FROM hazard_sediment WHERE zone_kind NOT IN (3,4)
+                           ORDER BY geom <-> ST_SetSRID(ST_MakePoint(%s,%s),6668)
+                           LIMIT 1""", (lon, lat, lon, lat))
+            n = cur.fetchone()
+            if n:
+                out["nearest"] = {"distance_m": int(n[0]),
+                                  "zone_kind_label": ZONE_KIND.get(n[1], "不明"), "zone_name": n[2]}
+    return JSONResponse(out)
+
+
+_MAP_HTML = """<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-BP0650KDFR');</script>
+<script>(function(){var s=document.createElement('script');s.src='https://kurage.exbridge.jp/simpletrack.php?url='+encodeURIComponent(location.href)+'&ref='+encodeURIComponent(document.referrer);s.async=true;document.head.appendChild(s)})();</script>
+<title>地図で見る｜Kurage 土砂災害ハザードマップ</title>
+<meta name="description" content="土砂災害警戒区域（イエローゾーン）と特別警戒区域（レッドゾーン）を地図に重ねて表示します。クリックするとその地点の区分・現象・指定年月日が出ます。全国47都道府県を収録。">
+<link rel="canonical" href="https://kurage.exbridge.jp/khazard.php/map/">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Kurage">
+<meta property="og:title" content="地図で見る｜Kurage 土砂災害ハザードマップ">
+<meta property="og:description" content="イエローゾーン・レッドゾーンを地図で。クリックで区分と指定年月日を判定します。">
+<meta property="og:url" content="https://kurage.exbridge.jp/khazard.php/map/">
+<meta property="og:image" content="https://kurage.exbridge.jp/pv/khazard-pv-poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
+<style>
+:root{--ink:#12202f;--muted:#5a6a7a;--line:#dce7ea;--teal:#0a9a8f;--deep:#0a726b;--paper:#f7fbfa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.75;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line)}
+.bar{max-width:1040px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-weight:800;color:var(--ink);text-decoration:none;font-size:16px}
+.brand small{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
+.bar nav{margin-left:auto}.bar nav a{color:var(--deep);text-decoration:none;font-size:13.5px;margin-left:14px}
+main{max-width:1040px;margin:0 auto;padding:22px 20px 60px}
+h1{font-size:clamp(19px,3.2vw,25px);margin:0 0 8px}
+.muted{color:var(--muted);font-size:13.5px}
+.maprow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:14px;margin-top:14px}
+@media(max-width:820px){.maprow{grid-template-columns:minmax(0,1fr)}}
+#map{height:min(70vh,620px);border-radius:12px;border:1px solid var(--line);min-width:0}
+.side{min-width:0}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.legend{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;margin-top:10px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:6px;border:1px solid rgba(0,0,0,.18)}
+.note{background:#fff8e8;border:1px solid #ecd8a7;border-radius:9px;padding:10px 12px;font-size:12.5px;margin:10px 0 0}
+form.search{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+input[type=text]{flex:1;min-width:min(100%,220px);padding:11px 13px;border:1px solid var(--line);border-radius:9px;font-size:15px}
+button.go{padding:11px 20px;border:0;border-radius:9px;background:linear-gradient(135deg,var(--teal),var(--deep));color:#fff;font-weight:700;cursor:pointer}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+th{background:#eef6f5;white-space:nowrap}
+</style></head><body>
+<header><div class="bar">
+ <a class="brand" href="../">Kurage 土砂災害ハザードマップ<small>EXBRIDGE, INC.</small></a>
+ <nav><a href="../">住所で調べる</a><a href="./">地図で見る</a></nav>
+</div></header>
+<main>
+<h1>地図で見る</h1>
+<p class="muted">全国の土砂災害警戒区域を地図に重ねています。<b>地図をクリック</b>すると、その地点の区分・現象・指定年月日が出ます。</p>
+
+<div class="maprow">
+ <div id="map"></div>
+ <div class="side">
+  <div class="card" id="result"><p class="muted" style="margin:0">地図をクリックすると、ここに判定が出ます。</p></div>
+  <div class="legend">
+   <b>凡例</b>
+   <div><i style="background:#e8b84b"></i>土砂災害警戒区域（イエローゾーン）</div>
+   <div><i style="background:#c0392b"></i>土砂災害特別警戒区域（レッドゾーン）</div>
+   <div><i style="background:#9aa7b4"></i>指定予定（まだ指定されていません）</div>
+  </div>
+  <div class="note" id="hint" hidden>もう少し<b>拡大</b>すると区域を表示します。</div>
+  <div class="note"><b>色が付いていない＝安全ではありません。</b>このデータは県内のすべての区域を網羅しているわけではなく、縮尺1/25,000相当の概略図です。</div>
+ </div>
+</div>
+
+<form class="search" method="get" action="./">
+ <input type="text" name="q" value="__Q__" placeholder="住所で移動（例: 広島県広島市安佐南区八木）">
+ <button class="go" type="submit">移動</button>
+</form>
+<p class="muted" style="margin-top:16px">背景地図: 国土地理院 淡色地図。区域: 国土数値情報「土砂災害警戒区域データ(A33)」国土交通省を加工して作成。<br>
+本サービスの判定は参考情報です。宅地建物取引業法の重要事項説明など、根拠を示す必要がある用途には使えません。</p>
+</main>
+<script>
+var BASE='../';
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+var map=new maplibregl.Map({container:'map',
+ style:{version:8,sources:{
+   gsi:{type:'raster',tiles:['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],tileSize:256,
+        attribution:'<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>'},
+   sed:{type:'vector',tiles:[location.origin+location.pathname.replace(/map\/$/,'')+'tiles/{z}/{x}/{y}.pbf'],minzoom:11,maxzoom:16}},
+  layers:[{id:'gsi',type:'raster',source:'gsi'},
+   {id:'sed-fill',type:'fill',source:'sed','source-layer':'sediment',
+    paint:{'fill-color':['match',['get','k'],1,'#e8b84b',2,'#c0392b',3,'#9aa7b4',4,'#9aa7b4','#888'],
+           'fill-opacity':['match',['get','k'],3,0.35,4,0.45,0.45]}},
+   {id:'sed-line',type:'line',source:'sed','source-layer':'sediment',
+    filter:['!',['in',['get','k'],['literal',[3,4]]]],
+    paint:{'line-color':['match',['get','k'],1,'#b98c1e',2,'#8e2a1e','#666'],'line-width':0.7}},
+   /* 指定予定は破線にする。塗りだけだと「指定済み」と見分けがつかない。 */
+   {id:'sed-planned-line',type:'line',source:'sed','source-layer':'sediment',
+    filter:['in',['get','k'],['literal',[3,4]]],
+    paint:{'line-color':'#66727e','line-width':1.1,'line-dasharray':[2,2]}}]},
+ center:[__LON__,__LAT__],zoom:__ZOOM__,minZoom:5,maxZoom:17});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+map.addControl(new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true}}),'top-right');
+function hint(){document.getElementById('hint').hidden = map.getZoom() >= 11;}
+map.on('load',hint); map.on('zoomend',hint);
+var marker=null;
+function judge(lat,lon){
+ document.getElementById('result').innerHTML='<p class="muted" style="margin:0">判定しています…</p>';
+ fetch(BASE+'api/at?lat='+lat+'&lon='+lon).then(function(r){return r.json()}).then(function(j){
+  var h='';
+  if(j.in_hazard_zone){
+   var red=j.zones.some(function(z){return z.zone_kind===2});
+   h='<div style="font-weight:800;color:'+(red?'#c0392b':'#b98c1e')+';margin-bottom:6px">'
+     +(red?'土砂災害特別警戒区域（レッドゾーン）の中です':'土砂災害警戒区域（イエローゾーン）の中です')+'</div>'
+     +'<table><tr><th>区分</th><th>現象</th><th>指定年月日</th></tr>';
+   for(var i=0;i<j.zones.length;i++){var z=j.zones[i];
+    h+='<tr><td>'+esc(z.zone_kind_label)+'</td><td>'+esc(z.phenomenon_label)+'</td><td>'+esc(z.designated_on||'—')+'</td></tr>';}
+   h+='</table>';
+   if(j.zones[0].zone_name)h+='<div class="muted">区域名: '+esc(j.zones[0].zone_name)+'</div>';
+   if(red)h+='<div class="note">特別警戒区域では、住宅の新築・増築に建築基準法の構造規制がかかり、宅地の造成に許可が要ります。</div>';
+  }else if(j.in_planned_zone){
+   h='<div style="font-weight:800;color:#5a6a7a;margin-bottom:6px">指定が予定されている区域です</div>'
+     +'<div class="note"><b>まだ指定されていないため、現時点で法律上の制限はかかっていません。</b>'
+     +'ただし危険性があると判断されている場所で、指定されると制限の対象になります。</div>'
+     +'<table><tr><th>区分</th><th>現象</th></tr>';
+   for(var i=0;i<j.planned_zones.length;i++){var z=j.planned_zones[i];
+    h+='<tr><td>'+esc(z.zone_kind_label)+'</td><td>'+esc(z.phenomenon_label)+'</td></tr>';}
+   h+='</table>';
+  }else{
+   h='<div style="font-weight:800;color:#0a726b;margin-bottom:6px">区域には入っていません</div>';
+   if(j.nearest)h+='<div class="muted">最も近い区域まで約 '+esc(j.nearest.distance_m)+' m（'+esc(j.nearest.zone_kind_label)+'）</div>';
+   h+='<div class="note">区域外は安全という意味ではありません。指定は随時行われ、このデータに反映されていない区域もあります。</div>';
+  }
+  h+='<p style="margin:10px 0 0"><a href="'+BASE+'" style="color:#0a726b">住所で詳しく調べる →</a></p>';
+  document.getElementById('result').innerHTML=h;
+  if(marker)marker.remove();
+  marker=new maplibregl.Marker({color:'#0a9a8f'}).setLngLat([lon,lat]).addTo(map);
+ }).catch(function(){document.getElementById('result').innerHTML='<p class="muted" style="margin:0">判定できませんでした。もう一度クリックしてください。</p>';});
+}
+map.on('click',function(e){judge(+e.lngLat.lat.toFixed(6),+e.lngLat.lng.toFixed(6))});
+__AUTO__
+</script></body></html>"""
+
+
+@app.get("/map/", response_class=HTMLResponse)
+def map_page(lat: float = None, lon: float = None, q: str = ""):
+    q = (q or "").strip()[:100]
+    if q and lat is None:
+        try:
+            g = geocode(q)
+        except Exception:
+            g = None
+        if g:
+            lat, lon = g["lat"], g["lon"]
+    auto = "map.on('load',function(){judge(%r,%r)});" % (lat, lon) if lat is not None else ""
+    return HTMLResponse(_MAP_HTML
+                        .replace("__LAT__", str(lat if lat is not None else 34.39))
+                        .replace("__LON__", str(lon if lon is not None else 132.46))
+                        .replace("__ZOOM__", "14" if lat is not None else "12")
+                        .replace("__Q__", q.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;"))
+                        .replace("__AUTO__", auto))
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 def _robots():
     return "User-agent: *\nAllow: /\n\nSitemap: https://kurage.exbridge.jp/khazard.php/sitemap.xml\n"
@@ -530,9 +799,12 @@ def _robots():
 
 @app.get("/sitemap.xml")
 def _sitemap():
+    base = "https://kurage.exbridge.jp/khazard.php"
+    urls = ["/", "/map/", "/about", "/area/"] + ["/area/" + a[0] for a in AREAS]
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-           + '<url><loc>https://kurage.exbridge.jp/khazard.php/</loc><changefreq>monthly</changefreq></url><url><loc>https://kurage.exbridge.jp/khazard.php/about</loc><changefreq>monthly</changefreq></url>' + '</urlset>')
+           + "".join(f'<url><loc>{base}{u}</loc><changefreq>monthly</changefreq></url>' for u in urls)
+           + '</urlset>')
     return Response(content=xml, media_type="application/xml")
 
 
