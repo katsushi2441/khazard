@@ -24,7 +24,7 @@ from datetime import date, datetime
 import psycopg2
 import requests
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 PORT = int(os.environ.get("KHAZARD_PORT", "18376"))
 DB = dict(host="127.0.0.1", port=55433, dbname="khazard", user="postgres",
@@ -203,6 +203,7 @@ def healthz():
 
 INDEX = """<!doctype html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-BP0650KDFR');</script>
 <title>土砂災害ハザードマップを住所から判定｜Kurage</title>
 <meta name="description" content="住所を入れると、土砂災害ハザードマップの警戒区域（イエローゾーン）・特別警戒区域（レッドゾーン）の内外を判定します。全国47都道府県・約179万区域を収録。区域区分・現象・指定年月日と、判定に使ったデータの時点まで表示します。無料で試せます。">
 <link rel="canonical" href="https://kurage.exbridge.jp/khazard.php/">
@@ -491,3 +492,50 @@ def area_index():
             '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> をどうぞ。</p>'
             '<ul style="font-size:15px;line-height:2.2">' + links + "</ul></div></body></html>")
     return HTMLResponse(html)
+
+
+_LLMS_BODY = """# Kurage 土砂災害ハザードマップ
+
+> 住所を入れると、土砂災害警戒区域（イエローゾーン）・特別警戒区域（レッドゾーン）の
+> 内外を判定するサイト。区域区分・現象（急傾斜地の崩壊／土石流／地すべり）・指定年月日を返す。
+
+## 収録
+- 区域数: 1,793,171
+- 都道府県: 47（全国）
+- 出典: 国土交通省 国土数値情報（土砂災害警戒区域）を加工して作成
+
+## 大事な区別
+- **「区域外」は「安全」ではない。** 警戒区域は都道府県が調査して指定した範囲で、
+  未指定でも危険がないとは限らない。
+- 住所から求めた座標は町丁目の代表点。正確な区域は自治体の最新ハザードマップで確認すること。
+
+## 使い方
+- 住所で調べる: https://kurage.exbridge.jp/khazard.php/?q=<住所>
+- API: https://kurage.exbridge.jp/khazard.php/api/check?q=<住所>
+
+## 関連（同じ運営の防災ツール）
+- 洪水・内水・高潮: https://kurage.exbridge.jp/kflood.php/
+- 津波浸水想定: https://kurage.exbridge.jp/ktsunami.php/
+- 地震の想定震度・液状化（名古屋版）: https://kurage.exbridge.jp/kjishin.php/
+
+運営: 株式会社エクスブリッジ https://exbridge.jp/
+"""
+
+# ---- AEO/GEO の標準セット（llms.txt / robots.txt / sitemap.xml）----
+# 他のKurage製品と同じ形にそろえる。AI検索に「何を答えるサイトか」を最初に渡す。
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def _robots():
+    return "User-agent: *\nAllow: /\n\nSitemap: https://kurage.exbridge.jp/khazard.php/sitemap.xml\n"
+
+
+@app.get("/sitemap.xml")
+def _sitemap():
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           + '<url><loc>https://kurage.exbridge.jp/khazard.php/</loc><changefreq>monthly</changefreq></url><url><loc>https://kurage.exbridge.jp/khazard.php/about</loc><changefreq>monthly</changefreq></url>' + '</urlset>')
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.get("/llms.txt", response_class=PlainTextResponse)
+def _llms():
+    return _LLMS_BODY
