@@ -366,7 +366,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 
 <p style="font-size:12.5px;color:#7d8a97;margin-top:10px">議員・政党事務所の方へ: このページを事務所の名前で運用できます → <a href="/bousai-giin.html">地域防災情報サービス</a></p>
 <p style="font-size:13px;margin-top:14px"><a href="map/"><b>地図で見る</b></a>（区域を地図に重ねて表示・クリックで判定）</p>
-<p style="font-size:13px;margin-top:14px">主要都市から地域ページへ入る: <a href="area/aichi-nagoya">名古屋</a>・<a href="area/kanagawa-yokohama">横浜</a>・<a href="area/hiroshima-hiroshima">広島</a>・<a href="area/shizuoka-atami">熱海</a>・<a href="area/aichi-toyota">豊田</a>・<a href="area/">地域一覧</a></p>
+<p style="font-size:13px;margin-top:14px">地域ページから入る: <a href="area/aichi-nagoya">名古屋市</a>・<a href="area/kanagawa-yokohama">横浜市</a>・<a href="area/hiroshima-hiroshima">広島市</a>・<a href="area/shizuoka-atami">熱海市</a>・<a href="area/aichi-toyota">豊田市</a>／<a href="area/">全国1,603市区町村の指定状況</a></p>
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
 住所の座標変換に国土地理院 地名検索APIを利用しています。<br>
@@ -444,24 +444,68 @@ _STYLE = re.search(r"<style>.*?</style>", INDEX, re.S).group(0)
 # /area/<slug> は1階層深いので相対 fetch を ../ に補正する
 _SCRIPT = re.search(r"<script>(?:(?!application/ld).)*?</script>", INDEX, re.S).group(0).replace("'api/check", "'../api/check")
 
-AREAS = [
-    ("aichi-nagoya", "名古屋市", "愛知県名古屋市守山区上志段味"),
-    ("kanagawa-yokohama", "横浜市", "神奈川県横浜市戸塚区名瀬町"),
-    ("hyogo-kobe", "神戸市", "兵庫県神戸市灘区六甲山町"),
-    ("hiroshima-hiroshima", "広島市", "広島県広島市安佐南区八木"),
-    ("shizuoka-atami", "熱海市", "静岡県熱海市伊豆山"),
-    ("kyoto-kyoto", "京都市", "京都府京都市左京区大原"),
-    ("fukuoka-fukuoka", "福岡市", "福岡県福岡市城南区東油山"),
-    ("nagasaki-nagasaki", "長崎市", "長崎県長崎市稲佐町"),
-    ("osaka-osaka", "大阪市", "大阪府大阪市東住吉区"),
-    ("aichi-toyota", "豊田市", "愛知県豊田市小渡町"),
-]
-AREA_BY_SLUG = {a[0]: a for a in AREAS}
+# 既にインデックス済みの10本の romaji スラッグは canonical として据え置く
+# （団体コードのURLへ移すと積み上がった評価が切れる）。新規は5桁の全国地方公共団体コード。
+LEGACY_SLUG = {
+    "23100": "aichi-nagoya", "14100": "kanagawa-yokohama", "28100": "hyogo-kobe",
+    "34100": "hiroshima-hiroshima", "22205": "shizuoka-atami", "26100": "kyoto-kyoto",
+    "40130": "fukuoka-fukuoka", "42201": "nagasaki-nagasaki", "27100": "osaka-osaka",
+    "23211": "aichi-toyota",
+}
+SLUG_BY_CODE = dict(LEGACY_SLUG)
+CODE_BY_SLUG = {v: k for k, v in LEGACY_SLUG.items()}
+# 大阪市は土砂災害警戒区域が1件も無い（実測 2026-09-14）。muni_stats には行が無いが
+# 既存の公開URLなので、「指定なし」と書くために名前だけ持っておく。
+ZERO_MUNI = {"27100": ("大阪府", "大阪市")}
+
+PHEN_LABEL = {"steep": "急傾斜地の崩壊（がけ崩れ）", "debris": "土石流", "slide": "地すべり"}
 
 
-def _area_head(city, slug, desc):
+def _load_muni():
+    """muni_stats（scripts/build_muni_stats.py が作る）を起動時に読む。1,603件・数百KB。"""
+    out = {}
+    try:
+        with conn() as cn, cn.cursor() as cur:
+            cur.execute("SELECT muni_code,pref_code,pref,muni,zones,yellow,red,planned,"
+                        "steep,debris,slide,first_on,last_on,unknown_on,samples FROM muni_stats")
+            cols = ("code", "pref_code", "pref", "muni", "zones", "yellow", "red", "planned",
+                    "steep", "debris", "slide", "first_on", "last_on", "unknown_on", "samples")
+            for r in cur.fetchall():
+                d = dict(zip(cols, r))
+                out[d["code"]] = d
+    except Exception as e:  # noqa: BLE001
+        print("muni_stats を読めません（地域ページは主要都市のみ）:", e)
+    return out
+
+
+MUNI = _load_muni()
+for _c in MUNI:
+    SLUG_BY_CODE.setdefault(_c, _c)
+    CODE_BY_SLUG.setdefault(SLUG_BY_CODE[_c], _c)
+# 都道府県コード -> [市区町村（区域数の多い順）]
+MUNI_BY_PREF = {}
+for _d in sorted(MUNI.values(), key=lambda x: -x["zones"]):
+    MUNI_BY_PREF.setdefault(_d["pref_code"], []).append(_d)
+PREF_NAME = {c: v[0]["pref"] for c, v in MUNI_BY_PREF.items()}
+
+
+def _muni_of(slug):
+    """スラッグ（romaji でも団体コードでも）から市区町村を引く。"""
+    code = CODE_BY_SLUG.get(slug) or (slug if slug in MUNI else None)
+    if code is None:
+        return None
+    d = MUNI.get(code)
+    if d is None and code in ZERO_MUNI:
+        pref, muni = ZERO_MUNI[code]
+        d = dict(code=code, pref_code=code[:2], pref=pref, muni=muni, zones=0, yellow=0,
+                 red=0, planned=0, steep=0, debris=0, slide=0, first_on=None, last_on=None,
+                 unknown_on=0, samples=[])
+    return d
+
+
+def _area_head(city, slug, desc, title=None, faq=None):
     url = "https://kurage.exbridge.jp/khazard.php/area/" + slug
-    title = city + "のハザードマップ｜土砂災害警戒区域を住所から調べる | Kurage"
+    title = title or (city + "のハザードマップ｜土砂災害警戒区域を住所から調べる | Kurage")
     ga = ('<script async src="https://www.googletagmanager.com/gtag/js?id=G-BP0650KDFR"></script>'
           '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}'
           "gtag('js',new Date());gtag('config','G-BP0650KDFR');</script>")
@@ -469,68 +513,192 @@ def _area_head(city, slug, desc):
         {"@type": "ListItem", "position": 1, "name": "Kurage 土砂災害ハザードマップ",
          "item": "https://kurage.exbridge.jp/khazard.php/"},
         {"@type": "ListItem", "position": 2, "name": city, "item": url}]}, ensure_ascii=False)
-    faq = json.dumps({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
-        {"@type": "Question", "name": city + "のハザードマップ（土砂災害）はどこで調べられますか？",
-         "acceptedAnswer": {"@type": "Answer", "text": "このページで" + city + "の住所を入れると、土砂災害警戒区域（イエロー／レッド）の内外が表示されます。国土交通省のデータにもとづく参考情報で、最終確認は自治体の最新ハザードマップで行ってください。"}}]}, ensure_ascii=False)
+    faq = faq or [("%sのハザードマップ（土砂災害）はどこで調べられますか？" % city,
+                   "このページで%sの住所を入れると、土砂災害警戒区域（イエロー／レッド）の内外が表示されます。"
+                   "国土交通省のデータにもとづく参考情報で、最終確認は自治体の最新ハザードマップで行ってください。" % city)]
+    faq_ld = json.dumps({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+        {"@type": "Question", "name": q,
+         "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]}, ensure_ascii=False)
     return ('<!doctype html><html lang="ja"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             "<title>" + title + "</title>"
-            '<meta name="description" content="' + desc + '">'
+            '<meta name="description" content="' + html_escape(desc) + '">'
             '<link rel="canonical" href="' + url + '">'
             '<meta property="og:type" content="website">'
-            '<meta property="og:title" content="' + city + 'のハザードマップ（土砂災害）｜Kurage">'
-            '<meta property="og:description" content="' + desc + '">'
+            '<meta property="og:title" content="' + html_escape(title) + '">'
+            '<meta property="og:description" content="' + html_escape(desc) + '">'
             '<meta property="og:url" content="' + url + '">'
             '<meta property="og:image" content="https://kurage.exbridge.jp/pv/khazard-pv-poster.jpg">'
             '<meta name="twitter:card" content="summary_large_image">'
             '<script type="application/ld+json">' + bc + '</script>'
-            '<script type="application/ld+json">' + faq + '</script>' + ga)
+            '<script type="application/ld+json">' + faq_ld + '</script>' + ga)
+
+
+def html_escape(t):
+    return (t or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _fmt_on(d):
+    """9999年は『不明・未定』を表す欠測コード。日付として出さない。"""
+    return "不明" if (d is None or d.year >= 9999) else d.strftime("%Y年%-m月%-d日")
+
+
+def _card(k, v, cls=""):
+    return '<div class="mcard %s"><div class="mk">%s</div><div class="mv">%s</div></div>' % (cls, k, v)
+
+
+_AREA_CSS = ("<style>.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}"
+             ".mcard{border:1px solid #dfe6ea;border-radius:10px;padding:10px 12px;background:#fff;min-width:0}"
+             ".mcard.red{border-color:#e0b4b4;background:#fdf6f6}.mcard.amber{border-color:#e6d3a3;background:#fffdf5}"
+             ".mk{font-size:12px;color:#5b6b76}.mv{font-size:19px;font-weight:700;color:#12202f;margin-top:3px}"
+             ".mlist{font-size:14px;line-height:2;columns:2;column-gap:22px}"
+             "@media(max-width:560px){.mlist{columns:1}}"
+             ".mtbl{width:100%;border-collapse:collapse;font-size:14px}.mtbl th,.mtbl td{border:1px solid #e3e9ec;padding:6px 8px;text-align:left}"
+             ".mtbl th{background:#f5f8f9;white-space:nowrap}.mwrap{overflow-x:auto}</style>")
+
+
+@app.get("/area/pref/{pref_code}", response_class=HTMLResponse)
+def area_pref(pref_code: str):
+    """都道府県ごとの一覧。市区町村ページをクロールさせる内部リンクの束ね役。"""
+    lst = MUNI_BY_PREF.get(pref_code)
+    if not lst:
+        raise HTTPException(404, "その都道府県のページはありません")
+    pref = lst[0]["pref"]
+    zones = sum(d["zones"] for d in lst)
+    red = sum(d["red"] for d in lst)
+    desc = ("%sの土砂災害警戒区域は%s市区町村で計%s区域（うち特別警戒区域＝レッドゾーン%s区域）。"
+            "市区町村を選ぶか、住所を入れると区域の内外を判定します。"
+            % (pref, f"{len(lst):,}", f"{zones:,}", f"{red:,}"))
+    rows = "".join(
+        '<tr><td><a href="/khazard.php/area/%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td></tr>'
+        % (SLUG_BY_CODE[d["code"]], d["muni"], f'{d["zones"]:,}', f'{d["yellow"]:,}', f'{d["red"]:,}')
+        for d in lst)
+    body = ('<h1><a href="/khazard.php/">%s</a>の土砂災害警戒区域（市区町村一覧）</h1>' % pref
+            + '<p class="lead">%sでは<strong>%s市区町村</strong>に計<strong>%s区域</strong>が指定されています'
+              '（特別警戒区域＝レッドゾーンは%s区域）。市区町村ごとの指定状況は下の表からどうぞ。</p>'
+              % (pref, f"{len(lst):,}", f"{zones:,}", f"{red:,}")
+            + '<div class="mwrap"><table class="mtbl"><tr><th>市区町村</th><th>区域数</th>'
+              '<th>イエロー</th><th>レッド</th></tr>' + rows + '</table></div>'
+            + '<p class="src" style="margin-top:14px">全国版は <a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a>、'
+              '地図で見るなら <a href="/khazard.php/map/">全国地図</a>、他県は <a href="/khazard.php/area/">地域一覧</a>。</p>'
+            + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
+    head = _area_head(pref, "pref/" + pref_code, desc,
+                      title="%sの土砂災害警戒区域｜市区町村別の指定状況 | Kurage" % pref)
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + "</div></body></html>")
 
 
 @app.get("/area/{slug}", response_class=HTMLResponse)
 def area(slug: str):
-    a = AREA_BY_SLUG.get(slug)
-    if not a:
+    d = _muni_of(slug)
+    if not d:
         raise HTTPException(404, "地域が見つかりません")
-    _, city, example = a
+    city, pref, code = d["muni"], d["pref"], d["code"]
+    full = pref + city
+    canon = SLUG_BY_CODE.get(code, code)
+    z, y, r, pl = d["zones"], d["yellow"], d["red"], d["planned"]
+    samples = d["samples"] or []
+    example = samples[0]["address"] if samples else full
     exq = requests.utils.quote(example)
-    desc = (city + "の住所を入れると、土砂災害警戒区域（イエローゾーン）・特別警戒区域（レッドゾーン）の内外を判定します。"
-            "全国約179万区域を収録。無料・登録不要。判定に使ったデータの時点も表示します。")
-    body = (
-        '<h1><a href="/khazard.php/">' + city + "のハザードマップ（土砂災害）</a></h1>"
-        '<p class="lead">' + city + "の住所を入れると、その地点が<strong>土砂災害警戒区域（イエロー）</strong>か"
-        "<strong>特別警戒区域（レッド）</strong>かを判定します。現象（急傾斜地の崩壊・土石流・地すべり）と"
-        "指定年月日、判定に使ったデータの時点も表示します。全国約179万区域を収録。</p>"
-        '<div class="card"><form id="f">'
-        '<input id="q" placeholder="例: ' + example + '" value="' + example + '" autocomplete="off">'
-        '<button id="b">判定する</button></form><div class="res" id="r"></div></div>'
-        '<section class="doc">'
-        "<h2>" + city + "で土砂災害の警戒区域を調べる</h2>"
-        "<p>" + city + "の住所を入れると、土砂災害警戒区域の内外と区域区分を返します。"
-        "崖のそば・傾斜地では区域に指定されていることがあります。国土交通省が公表したデータにもとづきます。</p>"
-        "<h2>あわせて確認したい方へ</h2>"
-        '<p>' + city + "で津波の浸水想定は "
-        '<a href="/ktsunami.php/area/' + slug + '">津波浸水想定マップ</a>、災害のとき使える避難所は '
-        '<a href="/krefuge.php/?q=' + exq + '">避難所マップ</a> で調べられます。'
-        '全国版は <a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> です。</p></section>'
-        '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
-        "／住所検索: 国土地理院 地名検索API</p>")
-    html = _area_head(city, slug, desc) + _STYLE + '</head><body><div class="wrap">' + body + _SCRIPT + "</body></html>"
-    return HTMLResponse(html)
+
+    if z == 0:
+        desc = ("%sには土砂災害警戒区域・特別警戒区域の指定が1件もありません（国土交通省 A33 実測）。"
+                "隣接する市区町村では指定があります。住所を入れて確かめられます。" % full)
+        lead = ('<p class="lead">国土交通省の土砂災害警戒区域データ（A33）を数えたところ、<strong>%sには指定された区域が1件もありません</strong>。'
+                '平野部で急傾斜地・渓流・地すべり地形が無いためです。隣接する市区町村には指定があるので、'
+                '職場や実家の住所も確かめてみてください。</p>' % full)
+        stats = ""
+    else:
+        desc = ("%sの土砂災害警戒区域は%s区域（イエロー%s・レッド%s%s）。急傾斜地の崩壊%s・土石流%s・地すべり%s。"
+                "住所を入れると、その地点が区域の内か外かを判定します。"
+                % (full, f"{z:,}", f"{y:,}", f"{r:,}",
+                   ("・指定予定%s" % f"{pl:,}") if pl else "",
+                   f'{d["steep"]:,}', f'{d["debris"]:,}', f'{d["slide"]:,}'))
+        lead = ('<p class="lead">%s には土砂災害警戒区域が<strong>%s区域</strong>あります。'
+                'そのうち<strong>特別警戒区域（レッドゾーン）が%s区域</strong>で、建築物の構造規制がかかります。'
+                '住所を入れると、その地点が区域の内か外か、現象と指定年月日まで返します。</p>'
+                % (full, f"{z:,}", f"{r:,}"))
+        cards = (_card("区域の合計", f"{z:,}")
+                 + _card("土砂災害警戒区域（イエロー）", f"{y:,}", "amber")
+                 + _card("特別警戒区域（レッド）", f"{r:,}", "red")
+                 + (_card("指定予定", f"{pl:,}") if pl else ""))
+        phen = "".join(_card(PHEN_LABEL[k], f'{d[k]:,}') for k in ("steep", "debris", "slide") if d[k])
+        span = ('<p class="src">指定年月日は <strong>%s</strong> から <strong>%s</strong> まで。%s</p>'
+                % (_fmt_on(d["first_on"]), _fmt_on(d["last_on"]),
+                   ("指定年月日が不明・未定（9999年）の区域が%s件あります。" % f'{d["unknown_on"]:,}') if d["unknown_on"] else ""))
+        ex = ""
+        if samples:
+            ex = ('<h2>%sで指定されている区域の例</h2><div class="mwrap"><table class="mtbl">'
+                  '<tr><th>区域名</th><th>住所</th></tr>%s</table></div>'
+                  % (city, "".join("<tr><td>%s</td><td>%s</td></tr>" % (html_escape(s["name"]), html_escape(s["address"]))
+                                   for s in samples)))
+        stats = ('<section class="doc"><h2>%sの指定状況（実データ）</h2><div class="mgrid">%s</div>'
+                 '<h2>現象別の内訳</h2><div class="mgrid">%s</div>%s%s</section>'
+                 % (city, cards, phen or '<p class="src">現象の内訳はデータに記載がありません。</p>', span, ex))
+
+    # 同じ県の他の市区町村へ（内部リンク。サイトマップに載せるだけではクロールされない）
+    sib = [x for x in MUNI_BY_PREF.get(d["pref_code"], []) if x["code"] != code][:40]
+    sib_html = ""
+    if sib:
+        sib_html = ('<section class="doc"><h2>%sの他の市区町村</h2><div class="mlist">%s</div>'
+                    '<p class="src" style="margin-top:8px"><a href="/khazard.php/area/pref/%s">%sの全市区町村一覧</a></p></section>'
+                    % (pref, "".join('<a href="/khazard.php/area/%s">%s</a>（%s区域）<br>'
+                                     % (SLUG_BY_CODE[x["code"]], x["muni"], f'{x["zones"]:,}') for x in sib),
+                       d["pref_code"], pref))
+
+    faq = [("%sで土砂災害警戒区域に指定されている場所はどれくらいありますか？" % full,
+            ("%sには指定された区域がありません。" % full) if z == 0 else
+            ("%sには%s区域あります。内訳は土砂災害警戒区域（イエローゾーン）%s区域、特別警戒区域（レッドゾーン）%s区域です。"
+             % (full, f"{z:,}", f"{y:,}", f"{r:,}"))),
+           ("イエローゾーンとレッドゾーンは何が違いますか？",
+            "土砂災害警戒区域（イエロー）は警戒避難体制を整える区域で、特別警戒区域（レッド）は"
+            "建築物に構造規制がかかり、開発行為に許可が要る区域です。不動産取引では重要事項説明の対象になります。")]
+
+    body = ('<h1><a href="/khazard.php/">%sのハザードマップ（土砂災害）</a></h1>' % full + lead
+            + '<div class="card"><form id="f"><input id="q" placeholder="例: %s" value="%s" autocomplete="off">'
+              '<button id="b">判定する</button></form><div class="res" id="r"></div></div>'
+              % (html_escape(example), html_escape(example))
+            + stats + sib_html
+            + '<section class="doc"><h2>あわせて確認したい方へ</h2><p>'
+              '%sの津波浸水想定は <a href="/ktsunami.php/">津波浸水想定マップ</a>、'
+              '使える避難所は <a href="/krefuge.php/?q=%s">避難所マップ</a>、'
+              '盛土の規制区域は <a href="/kmorido.php/">盛土規制区域マップ</a>、'
+              '条例の災害危険区域は <a href="/kriskarea.php/">災害危険区域マップ</a> で調べられます。'
+              '地図で見るなら <a href="/khazard.php/map/">全国地図</a>、全国版は '
+              '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> です。</p></section>' % (full, exq)
+            + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
+              '／住所検索: 国土地理院 地名検索API。区域数は住所文字列から市区町村を判定して数えた実測値です'
+              '（全国179万区域のうち0.33%は合併前の旧市町村名のため、どの市区町村にも計上していません）。'
+              '最終確認は自治体の最新のハザードマップでお願いします。</p>')
+    head = _area_head(full, canon, desc,
+                      title="%sのハザードマップ（土砂災害）｜警戒区域%s区域を住所で判定 | Kurage"
+                            % (full, f"{z:,}") if z else "%sのハザードマップ（土砂災害）｜指定区域なし | Kurage" % full,
+                      faq=faq)
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + _SCRIPT + "</body></html>")
 
 
 @app.get("/area", response_class=HTMLResponse)
 @app.get("/area/", response_class=HTMLResponse)
 def area_index():
-    links = "".join('<li><a href="/khazard.php/area/' + s + '">' + c + "のハザードマップ（土砂災害）</a></li>"
-                    for s, c, _ in AREAS)
-    desc = "主要都市ごとの土砂災害ハザードマップの入口です。住所を入れると警戒区域の内外が分かります。"
-    html = (_area_head("地域一覧", "index", desc) + _STYLE
-            + '</head><body><div class="wrap"><h1>地域から土砂災害の警戒区域を調べる</h1>'
-            '<p class="lead">主要都市ごとの入口です。全国版は '
-            '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> をどうぞ。</p>'
-            '<ul style="font-size:15px;line-height:2.2">' + links + "</ul></div></body></html>")
-    return HTMLResponse(html)
+    total = sum(d["zones"] for d in MUNI.values())
+    prefs = sorted(MUNI_BY_PREF.items(), key=lambda x: x[0])
+    rows = "".join(
+        '<tr><td><a href="/khazard.php/area/pref/%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td></tr>'
+        % (pc, lst[0]["pref"], f"{len(lst):,}", f'{sum(x["zones"] for x in lst):,}',
+           f'{sum(x["red"] for x in lst):,}')
+        for pc, lst in prefs)
+    desc = ("全国%s市区町村の土砂災害警戒区域（計%s区域）を、市区町村ごとの指定件数つきで一覧にしました。"
+            "都道府県から市区町村を選ぶと、イエロー・レッドの内訳と指定年月日が分かります。"
+            % (f"{len(MUNI):,}", f"{total:,}"))
+    body = ('<h1><a href="/khazard.php/">地域から土砂災害の警戒区域を調べる</a></h1>'
+            '<p class="lead">全国<strong>%s市区町村</strong>・計<strong>%s区域</strong>を収録しています。'
+            '都道府県を選ぶと市区町村ごとの指定件数が出ます。住所で直接調べるなら '
+            '<a href="/khazard.php/">全国版</a>、地図で見るなら <a href="/khazard.php/map/">全国地図</a> をどうぞ。</p>'
+            % (f"{len(MUNI):,}", f"{total:,}")
+            + '<div class="mwrap"><table class="mtbl"><tr><th>都道府県</th><th>市区町村</th>'
+              '<th>区域数</th><th>うちレッド</th></tr>' + rows + '</table></div>'
+            + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
+    head = _area_head("地域一覧", "", desc, title="全国の土砂災害警戒区域｜都道府県・市区町村別の指定状況 | Kurage")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + "</div></body></html>")
 
 
 _LLMS_BODY = """# Kurage 土砂災害ハザードマップ
@@ -805,7 +973,10 @@ def _robots():
 @app.get("/sitemap.xml")
 def _sitemap():
     base = "https://kurage.exbridge.jp/khazard.php"
-    urls = ["/", "/map/", "/about", "/area/"] + ["/area/" + a[0] for a in AREAS]
+    # 1,603市区町村＋47都道府県。枚数を出さないと検索の入口が増えない（2026-09-13 実測の結論）
+    urls = (["/", "/map/", "/about", "/area/"]
+            + ["/area/pref/" + pc for pc in sorted(MUNI_BY_PREF)]
+            + ["/area/" + SLUG_BY_CODE[c] for c in sorted(MUNI)])
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            + "".join(f'<url><loc>{base}{u}</loc><changefreq>monthly</changefreq></url>' for u in urls)
