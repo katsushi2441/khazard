@@ -1097,8 +1097,8 @@
     "address": "北海道瀬棚郡今金町字今金48-1",
     "tel": "0137-82-0111",
     "url": "https://www.town.imakane.lg.jp/gyousei/kurashi/syoubou/post_43.html",
-    "http": "503",
-    "ok": false
+    "http": "200",
+    "ok": true
    },
    "洪水": {
     "pref": "北海道",
@@ -1107,8 +1107,8 @@
     "address": "北海道瀬棚郡今金町字今金48-1",
     "tel": "0137-82-0111",
     "url": "https://www.town.imakane.lg.jp/gyousei/kurashi/syoubou/2710_1.html",
-    "http": "503",
-    "ok": false
+    "http": "200",
+    "ok": true
    }
   },
   "01371": {
@@ -30729,7 +30729,7 @@
     "address": "大分県由布市庄内町柿原302",
     "tel": "097-582-1111",
     "url": "https://www.city.yufu.oita.jp/kurashi/bousai/bousai_cate1/saigainisonaete/doysasaigaihazardmap",
-    "http": "200",
+    "http": "000",
     "ok": true
    },
    "洪水": {
@@ -30739,7 +30739,7 @@
     "address": "大分県由布市庄内町柿原302",
     "tel": "097-582-1111",
     "url": "https://www.city.yufu.oita.jp/kurashi/bousai/bousai_cate1/article_82532",
-    "http": "200",
+    "http": "000",
     "ok": true
    }
   },
@@ -33537,7 +33537,7 @@
     "address": "岐阜県安八郡輪之内町四郷2530-1",
     "tel": "0584-69-3117",
     "url": "https://town.wanouchi.gifu.jp/portal/life-process/disaster-prevention-life-process/post0025296/",
-    "http": "200",
+    "http": "000",
     "ok": true
    }
   },
@@ -34225,5 +34225,6 @@
     "ok": true
    }
   }
- }
+ },
+ "_verified": "2026-09-14"
 }
