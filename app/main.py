@@ -478,6 +478,25 @@ def _load_muni():
     return out
 
 
+def _load_wagamachi():
+    """市区町村の公式ハザードマップへのリンク（scripts/fetch_wagamachi.py が作る）。
+
+    国のデータでの判定は参考情報で、正式なものは市区町村が作るハザードマップ。
+    そこへ必ず送れるようにしておく。リンク先の著作権は市区町村にあり、
+    ポータル側のリンクが最新版でないことがある（規約に明示あり）ので画面にもそう書く。
+    """
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "wagamachi.json")
+    try:
+        d = json.load(open(path, encoding="utf-8"))
+        return d.get("muni", {}), d.get("_fetched", "")
+    except Exception as e:  # noqa: BLE001
+        print("わがまちハザードマップを読めません（公式リンクは出しません）:", e)
+        return {}, ""
+
+
+WAGAMACHI, WAGAMACHI_FETCHED = _load_wagamachi()
+
 MUNI = _load_muni()
 for _c in MUNI:
     SLUG_BY_CODE.setdefault(_c, _c)
@@ -555,6 +574,85 @@ _AREA_CSS = ("<style>.mgrid{display:grid;grid-template-columns:repeat(auto-fit,m
              "@media(max-width:560px){.mlist{columns:1}}"
              ".mtbl{width:100%;border-collapse:collapse;font-size:14px}.mtbl th,.mtbl td{border:1px solid #e3e9ec;padding:6px 8px;text-align:left}"
              ".mtbl th{background:#f5f8f9;white-space:nowrap}.mwrap{overflow-x:auto}</style>")
+
+
+
+# 検索する人の言い方と、法令・行政の用語はずれている。両方の語で拾えるように対応表を置く。
+# 実例: 名古屋市は「内水ハザードマップ」を「雨水出水浸水想定区域」へ改称していた（2026-09-14 実測）。
+TERMS = [("がけ崩れ・崖崩れ", "急傾斜地の崩壊"),
+         ("土砂崩れ・山崩れ", "急傾斜地の崩壊／土石流／地すべり（3つに分かれます）"),
+         ("イエローゾーン", "土砂災害警戒区域"),
+         ("レッドゾーン", "土砂災害特別警戒区域"),
+         ("土砂災害ハザードマップ", "土砂災害警戒区域等（水防法ではなく土砂災害防止法）"),
+         ("がけ条例", "建築基準法や各自治体の条例による、がけ付近の建築制限")]
+
+
+def _official_block(code, city):
+    """市区町村の公式ハザードマップへの導線。担当課と電話も出す。"""
+    w = WAGAMACHI.get(code) or {}
+    if not w:
+        return ""
+    rows, contact = [], None
+    for kind in ("土砂災害", "洪水"):
+        it = w.get(kind)
+        if not it:
+            continue
+        contact = contact or it
+        # ポータル側のリンクも1割弱が切れている（実測）。死んだ先へ利用者を送らない。
+        if not it.get("ok", True):
+            continue
+        tel = (" ／ " + html_escape(it["tel"])) if it.get("tel") else ""
+        rows.append('<li><a href="%s" target="_blank" rel="noopener">%sの%sハザードマップ（%s公式）</a>'
+                    '<br><span class="src">担当: %s%s</span></li>'
+                    % (html_escape(it["url"]), html_escape(city), kind, html_escape(city),
+                       html_escape(it.get("dept") or "—"), tel))
+    if not rows:
+        # リンクが全部切れていても、どこへ聞けばよいかは出せる
+        if not contact:
+            return ""
+        tel = (" ／ " + html_escape(contact["tel"])) if contact.get("tel") else ""
+        return ('<section class="doc"><h2>%sの公式ハザードマップ</h2>'
+                '<p>このページの判定は国のデータにもとづく<strong>参考情報</strong>です。'
+                '正式なものは市区町村が作るハザードマップです。'
+                '公開ページのリンクが変わっているため、窓口をご案内します。</p>'
+                '<p class="src">担当: %s%s</p>'
+                '<p class="src">出典: わがまちハザードマップ（ハザードマップポータルサイト・国土交通省）'
+                '%s。リンク先の著作権は各市区町村にあります。</p></section>'
+                % (html_escape(city), html_escape(contact.get("dept") or "—"), tel,
+                   ("・%s時点" % WAGAMACHI_FETCHED) if WAGAMACHI_FETCHED else ""))
+    return ('<section class="doc"><h2>%sの公式ハザードマップ</h2>'
+            '<p>このページの判定は国のデータにもとづく<strong>参考情報</strong>です。'
+            '正式なものは市区町村が作るハザードマップなので、最終確認はこちらでお願いします。</p>'
+            '<ul style="font-size:14.5px;line-height:1.8">%s</ul>'
+            '<p class="src">出典: わがまちハザードマップ（ハザードマップポータルサイト・国土交通省）'
+            '%s。リンク先の著作権は各市区町村にあり、最新版でない場合があります。</p></section>'
+            % (html_escape(city), "".join(rows),
+               ("・%s時点" % WAGAMACHI_FETCHED) if WAGAMACHI_FETCHED else ""))
+
+
+def _howto_block(city):
+    """市のハザードマップとの使い分け。どちらが要るかを先に示す。"""
+    return ('<section class="doc"><h2>市のハザードマップとの使い分け</h2>'
+            '<div class="mwrap"><table class="mtbl">'
+            '<tr><th></th><th>%sの公式ハザードマップ</th><th>このページ</th></tr>'
+            '<tr><th>調べ方</th><td>地図の中から自分の場所を目で探す</td><td>住所を入れると1件で判定</td></tr>'
+            '<tr><th>形</th><td>地図（多くはPDF）</td><td>Webページ（文字で読める・読み上げできる）</td></tr>'
+            '<tr><th>範囲</th><td>その市区町村</td><td>全国どこでも同じ形で引ける</td></tr>'
+            '<tr><th>位置づけ</th><td><strong>正式</strong></td><td>参考情報（出典と時点を明記）</td></tr>'
+            '</table></div>'
+            '<p class="src">引っ越し先や実家など、別の市区町村も同じ使い方で調べられます。'
+            '不動産取引の重要事項説明には、市区町村の正式なハザードマップを使ってください。</p></section>'
+            % html_escape(city))
+
+
+def _terms_block():
+    rows = "".join("<tr><td>%s</td><td>%s</td></tr>" % (a, b) for a, b in TERMS)
+    return ('<section class="doc"><h2>検索でよく使われる言い方と、行政の用語</h2>'
+            '<div class="mwrap"><table class="mtbl"><tr><th>ふだんの言い方</th>'
+            '<th>法令・行政の用語</th></tr>' + rows + '</table></div>'
+            '<p class="src">自治体のページは法令の用語で書かれているので、'
+            'ふだんの言い方で検索すると見つからないことがあります。'
+            'このページはどちらの言い方でも同じ答えを返します。</p></section>')
 
 
 @app.get("/area/pref/{pref_code}", response_class=HTMLResponse)
@@ -657,7 +755,11 @@ def area(slug: str):
             + '<div class="card"><form id="f"><input id="q" placeholder="例: %s" value="%s" autocomplete="off">'
               '<button id="b">判定する</button></form><div class="res" id="r"></div></div>'
               % (html_escape(example), html_escape(example))
-            + stats + sib_html
+            + stats
+            + _official_block(code, full)
+            + _howto_block(full)
+            + _terms_block()
+            + sib_html
             + '<section class="doc"><h2>あわせて確認したい方へ</h2><p>'
               '%sの津波浸水想定は <a href="/ktsunami.php/">津波浸水想定マップ</a>、'
               '使える避難所は <a href="/krefuge.php/?q=%s">避難所マップ</a>、'
