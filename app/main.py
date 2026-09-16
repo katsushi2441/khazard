@@ -370,7 +370,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
 住所の座標変換に国土地理院 地名検索APIを利用しています。<br>
-提供: <a href="https://exbridge.jp/">株式会社エクスブリッジ</a></p>
+提供: <a href="https://exbridge.jp/">株式会社エクスブリッジ</a></p><p class="src"><a href="https://exbridge.jp/politech/#bousai?ref=kurage-khazard" rel="noopener">住民が検索している防災の言葉（32語）</a> ・ <a href="https://exbridge.jp/ai-system/?ref=kurage-khazard" rel="noopener">AIでできること</a> ・ <a href="https://exbridge.jp/solution/seito.html?ref=kurage-khazard" rel="noopener">政党・議員事務所むけ</a></p>
 </div>
 <script>
 const f=document.getElementById('f'),q=document.getElementById('q'),b=document.getElementById('b'),r=document.getElementById('r');
