@@ -64,6 +64,9 @@ _rate = {}
 
 
 def limited(ip, per_min=20):
+    # 相手が分からない＝自前のサーバー間呼び出し（client_ip がループバックを空で返す）。数えない。
+    if not ip:
+        return False
     now = time.time()
     q = [t for t in _rate.get(ip, []) if now - t < 60]
     if len(q) >= per_min:
@@ -88,6 +91,32 @@ def geocode(q: str):
     it = max(items, key=score)
     lon, lat = it["geometry"]["coordinates"]
     return {"lat": lat, "lon": lon, "label": it.get("properties", {}).get("title", q)}
+
+
+def client_ip(request) -> str:
+    """**プロキシ越しの本当の相手**を返す。
+
+    公開経路は heteml の <name>.php → このサーバーで、プロキシは
+    X-Forwarded-For に元の相手を入れて渡してくる。これを見ないで
+    request.client.host を使うと、**公開からの利用者が全員おなじIP**に見え、
+    誰か1人が20回叩いた時点で全員が429になる（2026-09-18 に kflood 以外の3本で発覚）。
+    ループバックは自前のサーバー間呼び出しなので数えない。
+    """
+    xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    ip = xff or ((request.client.host if request.client else "") or "")
+    return "" if ip in ("127.0.0.1", "::1", "localhost") else ip
+
+
+def _point(q: str, lat=None, lon=None):
+    """座標が来たら住所検索をしない。
+
+    kflood のマイ・タイムラインは、すでに求めた代表点をそのまま渡してくる。
+    ここで引き直すと国土地理院を無駄に叩くうえ、**道具ごとに代表点がずれる**
+    おそれがある。座標が無いときだけ今までどおり住所から引く。
+    """
+    if lat is not None and lon is not None:
+        return {"lat": float(lat), "lon": float(lon), "label": (q or "").strip() or f"{lat},{lon}"}
+    return geocode(q)
 
 
 def conn():
@@ -123,15 +152,15 @@ def pref_of(cur, lat, lon):
 
 
 @app.get("/api/check")
-def check(request: Request, q: str):
-    ip = request.client.host if request.client else "?"
+def check(request: Request, q: str = "", lat: float | None = None, lon: float | None = None):
+    ip = client_ip(request)
     if limited(ip):
         raise HTTPException(429, "アクセスが集中しています。1分ほど待って再度お試しください")
     q = (q or "").strip()
-    if not q:
+    if not q and lat is None:
         raise HTTPException(400, "住所を入力してください")
 
-    g = geocode(q)
+    g = _point(q, lat, lon)
     if not g:
         raise HTTPException(404, "住所を特定できませんでした。市区町村から入れてみてください")
 
@@ -906,7 +935,7 @@ def vector_tile(z: int, x: int, y: int):
 @app.get("/api/at")
 def check_at(request: Request, lat: float, lon: float):
     """座標での判定（地図クリック用）。住所を介さないので町丁目代表点のズレが無い。"""
-    ip = request.client.host if request.client else "?"
+    ip = client_ip(request)
     if limited(ip, per_min=60):
         raise HTTPException(429, "アクセスが集中しています。1分ほど待って再度お試しください")
     with conn() as c, c.cursor() as cur:
