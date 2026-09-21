@@ -16275,8 +16275,8 @@
     "address": "長野県上伊那郡飯島町飯島2537",
     "tel": "0265-86-3111",
     "url": "https://www.town.iijima.lg.jp/soshikiichiran/somuka/kikikanrigakarikakari/bousai/2121.html",
-    "http": "200",
-    "ok": true
+    "http": "404",
+    "ok": false
    },
    "洪水": {
     "pref": "長野県",
@@ -16285,8 +16285,8 @@
     "address": "長野県上伊那郡飯島町飯島2537",
     "tel": "0265-86-3111",
     "url": "https://www.town.iijima.lg.jp/soshikiichiran/somuka/kikikanrigakarikakari/bousai/2121.html",
-    "http": "200",
-    "ok": true
+    "http": "404",
+    "ok": false
    }
   },
   "20385": {
@@ -26865,8 +26865,8 @@
     "address": "愛媛県越智郡上島町弓削下弓削1037",
     "tel": "0897-77-4118",
     "url": "https://www.town.kamijima.lg.jp/soshiki/15/4082.html",
-    "http": "200",
-    "ok": true
+    "http": "504",
+    "ok": false
    }
   },
   "38386": {
@@ -30729,7 +30729,7 @@
     "address": "大分県由布市庄内町柿原302",
     "tel": "097-582-1111",
     "url": "https://www.city.yufu.oita.jp/kurashi/bousai/bousai_cate1/saigainisonaete/doysasaigaihazardmap",
-    "http": "000",
+    "http": "200",
     "ok": true
    },
    "洪水": {
@@ -30739,7 +30739,7 @@
     "address": "大分県由布市庄内町柿原302",
     "tel": "097-582-1111",
     "url": "https://www.city.yufu.oita.jp/kurashi/bousai/bousai_cate1/article_82532",
-    "http": "000",
+    "http": "200",
     "ok": true
    }
   },
@@ -33537,7 +33537,7 @@
     "address": "岐阜県安八郡輪之内町四郷2530-1",
     "tel": "0584-69-3117",
     "url": "https://town.wanouchi.gifu.jp/portal/life-process/disaster-prevention-life-process/post0025296/",
-    "http": "000",
+    "http": "200",
     "ok": true
    }
   },
@@ -34226,5 +34226,5 @@
    }
   }
  },
- "_verified": "2026-09-14"
+ "_verified": "2026-09-22"
 }

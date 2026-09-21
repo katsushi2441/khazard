@@ -23,6 +23,7 @@ from datetime import date, datetime
 
 import psycopg2
 import requests
+from app import jma
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
@@ -395,7 +396,11 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 
 <p style="font-size:12.5px;color:#7d8a97;margin-top:10px">議員・政党事務所の方へ: このページを事務所の名前で運用できます → <a href="/bousai-giin.html">地域防災情報サービス</a></p>
 <p style="font-size:13px;margin-top:14px"><a href="map/"><b>地図で見る</b></a>（区域を地図に重ねて表示・クリックで判定）</p>
-<p style="font-size:13px;margin-top:14px">地域ページから入る: <a href="area/aichi-nagoya">名古屋市</a>・<a href="area/kanagawa-yokohama">横浜市</a>・<a href="area/hiroshima-hiroshima">広島市</a>・<a href="area/shizuoka-atami">熱海市</a>・<a href="area/aichi-toyota">豊田市</a>／<a href="area/">全国1,603市区町村の指定状況</a></p>
+<section class="sec" id="prefs"><h2>都道府県から探す</h2>
+<p style="font-size:13px">お住まいの都道府県を選ぶと、市区町村ごとのイエロー・レッドの内訳が出ます。</p>
+<p class="preflist" style="font-size:13px;line-height:2.4">__PREF_LINKS__</p>
+<p style="font-size:13px">よく見られている市: <a href="area/aichi-nagoya">名古屋市</a>・<a href="area/kanagawa-yokohama">横浜市</a>・<a href="area/hiroshima-hiroshima">広島市</a>・<a href="area/shizuoka-atami">熱海市</a>・<a href="area/aichi-toyota">豊田市</a>／<a href="area/">全国1,603市区町村の指定状況</a></p>
+</section>
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
 住所の座標変換に国土地理院 地名検索APIを利用しています。<br>
@@ -565,6 +570,14 @@ for _d in sorted(MUNI.values(), key=lambda x: -x["zones"]):
     MUNI_BY_PREF.setdefault(_d["pref_code"], []).append(_d)
 PREF_NAME = {c: v[0]["pref"] for c, v in MUNI_BY_PREF.items()}
 
+# トップに47都道府県を出す（item: 入口）。**5市だけ並べていたのを置き換えた。**
+# 2026-09-21 実測で、Xから来た90人が全員トップに着地していたのに、その日に検索で
+# 来ていた綾瀬市・茅ヶ崎市・箱根町へトップから1クリックで行けなかった。
+_PREF_LINKS = "・".join(
+    '<a href="area/pref/%s">%s</a>（%s）' % (pc, PREF_NAME[pc], f'{sum(d["zones"] for d in MUNI_BY_PREF[pc]):,}')
+    for pc in sorted(MUNI_BY_PREF))
+INDEX = INDEX.replace("__PREF_LINKS__", _PREF_LINKS)
+
 
 def _muni_of(slug):
     """スラッグ（romaji でも団体コードでも）から市区町村を引く。"""
@@ -643,6 +656,62 @@ TERMS = [("がけ崩れ・崖崩れ", "急傾斜地の崩壊"),
          ("レッドゾーン", "土砂災害特別警戒区域"),
          ("土砂災害ハザードマップ", "土砂災害警戒区域等（水防法ではなく土砂災害防止法）"),
          ("がけ条例", "建築基準法や各自治体の条例による、がけ付近の建築制限")]
+
+
+def _jma_block(full):
+    """いまその市区町村に出ている気象警報・注意報。**空でも枠を出す。**
+
+    土砂災害の市区町村ページに来る人は、災害が起きている当日にしか来ない
+    （2026-09-21 実測: 神奈川県の市町ページに1日132件、前後の日はほぼ0）。
+    区域の内外は平時の情報なので、その日に必要な「いま」を並べて出す。
+
+    **取れなかったときに「発表なし」とは書かない。** 気象庁の配信が止まっていたときも、
+    古い報を「いま出ている」とは書かない（2026-09-22 に kflood で実際に起きた。
+    5月28日の濃霧注意報を4か月ぶん「いま出ている」と表示していた）。
+    """
+    j = jma.status_for(full)
+    st = j.get("status")
+    items = j.get("items") or []
+    src = ('<p class="src">%s 取得／出典: <a href="%s" target="_blank" rel="noopener">%s</a>%s。'
+           '土砂災害警戒情報や避難情報は市区町村・都道府県の発表でご確認ください。</p>'
+           % (html_escape(j.get("fetched_at") or "-"), jma.SOURCE_URL, jma.SOURCE_NAME,
+              ('（%s 発表）' % html_escape((j.get("report_at") or "")[:16].replace("T", " "))) if j.get("report_at") else ""))
+    if st == "uncovered":
+        body = ('<div class="note">この市区町村の気象警報・注意報は引けませんでした。'
+                '<b>発表されていないという意味ではありません。</b>'
+                '<a href="https://www.jma.go.jp/bosai/warning/" target="_blank" rel="noopener">気象庁のページ</a>でご確認ください。</div>')
+        src = ""
+    elif st not in ("ok", "stale"):
+        body = ('<div class="note">気象警報・注意報を取得できませんでした。'
+                '<b>発表されていないという意味ではありません。</b>'
+                '<a href="https://www.jma.go.jp/bosai/warning/" target="_blank" rel="noopener">気象庁のページ</a>でご確認ください。</div>')
+    elif j.get("source_outdated"):
+        days = int((j.get("report_age_h") or 0) // 24)
+        body = ('<div class="note">気象庁の配信が %s（%d日前）で止まっているため、'
+                '<b>いま出ている警報・注意報は分かりません</b>。最後に取れた内容は「%s」ですが、'
+                'すでに解除されている可能性が高いので、これを現在の状況としては表示しません。'
+                '<a href="https://www.jma.go.jp/bosai/warning/" target="_blank" rel="noopener">気象庁のページ</a>で最新をご確認ください。</div>'
+                % (html_escape((j.get("report_at") or "")[:16].replace("T", " ")), days,
+                   html_escape("、".join(i["name"] for i in items))))
+    elif items:
+        kinds = {i["kind"] for i in items}
+        lv = "lv3" if "special" in kinds else ("lv2" if "warning" in kinds else "lv1")
+        cards = "".join('<div class="card %s"><div class="k">%s</div><div class="v" style="font-size:16px">%s</div></div>'
+                        % (("lv3" if i["kind"] == "special" else "lv2" if i["kind"] == "warning" else "lv1"),
+                           ("特別警報" if i["kind"] == "special" else "警報" if i["kind"] == "warning" else "注意報"),
+                           html_escape(i["name"]))
+                        for i in items)
+        head = ("特別警報" if "special" in kinds else "警報" if "warning" in kinds else "注意報")
+        body = ('<div class="note %s">%sに%sが出ています。</div><div class="grid">%s</div>%s'
+                % (lv, html_escape(j.get("muni_name") or full), head, cards,
+                   ('<p class="src">%s</p>' % html_escape(j["headline"])) if j.get("headline") else ""))
+    else:
+        body = ('<div class="note ok">%sに気象警報・注意報は発表されていません。</div>'
+                % html_escape(j.get("muni_name") or full))
+    return ('<section class="doc" id="now"><h2>いまの気象警報・注意報（気象庁）</h2>'
+            + body + src
+            + '<p class="src"><b>出ていないときも、この枠は出しています。</b>'
+            '土砂災害の危険度は雨で変わります。区域の内外（下）は平時の指定で、いまの危険度ではありません。</p></section>')
 
 
 def _official_block(code, city):
@@ -813,18 +882,28 @@ def area(slug: str):
             + '<div class="card"><form id="f"><input id="q" placeholder="例: %s" value="%s" autocomplete="off">'
               '<button id="b">判定する</button></form><div class="res" id="r"></div></div>'
               % (html_escape(example), html_escape(example))
+            + _jma_block(full)
             + stats
             + _official_block(code, full)
             + _howto_block(full)
             + _terms_block()
             + sib_html
-            + '<section class="doc"><h2>あわせて確認したい方へ</h2><p>'
-              '%sの津波浸水想定は <a href="/ktsunami.php/">津波浸水想定マップ</a>、'
-              '使える避難所は <a href="/krefuge.php/?q=%s">避難所マップ</a>、'
+            + '<section class="doc"><h2>あわせて確認したい方へ</h2>'
+              '<p><b>雨で怖いのは、がけだけではありません。</b>同じ住所で、'
+              '洪水と内水（下水があふれる浸水）で何メートル浸かる想定かを '
+              '<a href="/kflood.php/?q=%s">洪水・内水ハザードマップ</a> で調べられます。'
+              '避難先は <a href="/krefuge.php/?q=%s">避難所マップ</a> で、徒歩何分かまで出ます。</p>'
+              '<p>%sの津波浸水想定は <a href="/ktsunami.php/">津波浸水想定マップ</a>、'
               '盛土の規制区域は <a href="/kmorido.php/">盛土規制区域マップ</a>、'
               '条例の災害危険区域は <a href="/kriskarea.php/">災害危険区域マップ</a> で調べられます。'
               '地図で見るなら <a href="/khazard.php/map/">全国地図</a>、全国版は '
-              '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> です。</p></section>' % (full, exq)
+              '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> です。</p></section>'
+              '<section class="doc"><h2>同じ仕組みを、自分のところで動かす</h2>'
+              '<p>%sを含む全国1,603市区町村ぶんのこの画面を、事務所・自治体・会社の名前で公開できます。'
+              'ソースコード同梱・MITライセンス・月額なし。国土数値情報の土砂災害警戒区域179万区域を同梱していて、'
+              '判定は置いた場所で完結します（外部の有料APIは使いません）。</p>'
+              '<p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-area">'
+              'オンプレミス版を見る（税込55,000円）</a></p></section>' % (exq, exq, full, full)
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
               '／住所検索: 国土地理院 地名検索API。区域数は住所文字列から市区町村を判定して数えた実測値です'
               '（全国179万区域のうち0.33%は合併前の旧市町村名のため、どの市区町村にも計上していません）。'
@@ -1130,6 +1209,22 @@ def _robots():
     return "User-agent: *\nAllow: /\n\nSitemap: https://kurage.exbridge.jp/khazard.php/sitemap.xml\n"
 
 
+
+def _lastmod():
+    """サイトマップの lastmod。**このファイルの更新日**を使う。
+
+    ページの中身が変わるのはコードかデータが変わったときなので、毎回 now を入れない
+    （「いつも更新されている」ことになって、かえって無視される）。
+    2026-09-22 実測: Google が取りに来ていた子サイトマップは lastmod のあるものだけだった。
+    """
+    import datetime as _d
+    import os as _o
+    return _d.datetime.fromtimestamp(_o.path.getmtime(_o.path.abspath(__file__))).strftime("%Y-%m-%d")
+
+
+_LASTMOD = _lastmod()
+
+
 @app.get("/sitemap.xml")
 def _sitemap():
     base = "https://kurage.exbridge.jp/khazard.php"
@@ -1139,7 +1234,7 @@ def _sitemap():
             + ["/area/" + SLUG_BY_CODE[c] for c in sorted(MUNI)])
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-           + "".join(f'<url><loc>{base}{u}</loc><changefreq>monthly</changefreq></url>' for u in urls)
+           + "".join(f'<url><loc>{base}{u}</loc><lastmod>{_LASTMOD}</lastmod><changefreq>monthly</changefreq></url>' for u in urls)
            + '</urlset>')
     return Response(content=xml, media_type="application/xml")
 

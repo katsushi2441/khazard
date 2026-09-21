@@ -18,3 +18,5 @@ data/tiles/
 *.env.bak*
 *.bak
 *.bak-*
+outputs/
+data/jma_area.json
