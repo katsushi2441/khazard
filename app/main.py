@@ -695,13 +695,13 @@ def _jma_block(full):
                    html_escape("、".join(i["name"] for i in items))))
     elif items:
         kinds = {i["kind"] for i in items}
-        lv = "lv3" if "special" in kinds else ("lv2" if "warning" in kinds else "lv1")
+        lv = "lv3" if kinds & {"special", "danger"} else ("lv2" if "warning" in kinds else "lv1")
+        label = {"special": "特別警報", "danger": "危険警報", "warning": "警報", "advisory": "注意報"}
         cards = "".join('<div class="card %s"><div class="k">%s</div><div class="v" style="font-size:16px">%s</div></div>'
-                        % (("lv3" if i["kind"] == "special" else "lv2" if i["kind"] == "warning" else "lv1"),
-                           ("特別警報" if i["kind"] == "special" else "警報" if i["kind"] == "warning" else "注意報"),
-                           html_escape(i["name"]))
+                        % (("lv3" if i["kind"] in ("special", "danger") else "lv2" if i["kind"] == "warning" else "lv1"),
+                           label.get(i["kind"], "注意報"), html_escape(i["name"]))
                         for i in items)
-        head = ("特別警報" if "special" in kinds else "警報" if "warning" in kinds else "注意報")
+        head = ("特別警報" if "special" in kinds else "危険警報" if "danger" in kinds else "警報" if "warning" in kinds else "注意報")
         body = ('<div class="note %s">%sに%sが出ています。</div><div class="grid">%s</div>%s'
                 % (lv, html_escape(j.get("muni_name") or full), head, cards,
                    ('<p class="src">%s</p>' % html_escape(j["headline"])) if j.get("headline") else ""))
