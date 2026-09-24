@@ -903,7 +903,15 @@ def area(slug: str):
               'ソースコード同梱・MITライセンス・月額なし。国土数値情報の土砂災害警戒区域179万区域を同梱していて、'
               '判定は置いた場所で完結します（外部の有料APIは使いません）。</p>'
               '<p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-area">'
-              'オンプレミス版を見る（税込55,000円）</a></p></section>' % (exq, exq, full, full)
+              'オンプレミス版を見る（税込55,000円）</a></p>'
+              # **いちばん人が来るページに、いちばん単価の高い商品の案内を置く。**
+              # 2026-09-24 実測: khazard の市区町村ページは28日で45クリック稼いでいるのに、
+              # AI-IT顧問契約への導線が0本だった（krefuge のトップにだけ付いていた）。
+              '<p style="font-size:14px;margin-top:10px">名古屋市内の会社なら、'
+              '<a href="https://exbridge.jp/ai-it-komon.html?ref=khazard-area" target="_blank" rel="noopener">'
+              'AI-IT顧問契約</a>（月15時間・税別150,000円）の期間中に構築できる商品は、'
+              '商品代金をいただかず当社が設置まで行います。ソースコードごと御社の資産として残ります。</p>'
+              '</section>' % (exq, exq, full, full)
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
               '／住所検索: 国土地理院 地名検索API。区域数は住所文字列から市区町村を判定して数えた実測値です'
               '（全国179万区域のうち0.33%は合併前の旧市町村名のため、どの市区町村にも計上していません）。'
