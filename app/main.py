@@ -144,10 +144,18 @@ def staleness(vintage: str):
 
 
 def pref_of(cur, lat, lon):
-    """点がどの都道府県のデータ範囲にあるか。取り込み済みでない県は判定しない。"""
-    cur.execute("""SELECT pref_code FROM hazard_sediment
-                   WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(%s,%s),6668), 0.5)
-                   LIMIT 1""", (lon, lat))
+    """点がどの都道府県のデータ範囲にあるか。取り込み済みでない県は判定しない。
+
+    0.5度（約55km）は未取込の県を弾くための上限で、県を選ぶ条件ではない。
+    この広さには隣県がいくつも入る（横須賀の点で千葉22,575・東京7,792・
+    神奈川57,015・静岡7件が該当した）ので、必ず最も近い区域の県を採る。
+    順序を付けないと出典とデータ時点が別の県のものになる（2026-09-25 実測）。
+    """
+    pt = "ST_SetSRID(ST_MakePoint(%s,%s),6668)"
+    cur.execute(f"""SELECT pref_code FROM hazard_sediment
+                    WHERE ST_DWithin(geom, {pt}, 0.5)
+                    ORDER BY geom <-> {pt}
+                    LIMIT 1""", (lon, lat, lon, lat))
     r = cur.fetchone()
     return r[0] if r else None
 
