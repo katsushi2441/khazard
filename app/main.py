@@ -652,7 +652,12 @@ _AREA_CSS = ("<style>.mgrid{display:grid;grid-template-columns:repeat(auto-fit,m
              ".mlist{font-size:14px;line-height:2;columns:2;column-gap:22px}"
              "@media(max-width:560px){.mlist{columns:1}}"
              ".mtbl{width:100%;border-collapse:collapse;font-size:14px}.mtbl th,.mtbl td{border:1px solid #e3e9ec;padding:6px 8px;text-align:left}"
-             ".mtbl th{background:#f5f8f9;white-space:nowrap}.mwrap{overflow-x:auto}</style>")
+             ".mtbl th{background:#f5f8f9;white-space:nowrap}.mwrap{overflow-x:auto}"
+             ".nxgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}"
+             ".nx{display:flex;flex-direction:column;gap:4px;border:1px solid #cfe3e0;border-radius:10px;padding:12px 14px;"
+             "background:#f6fbfa;color:#12202f;text-decoration:none;min-width:0}"
+             ".nx b{font-size:16px;color:#0b6b5c}.nx span{font-size:13px;color:#4f5f69;line-height:1.6}"
+             ".nx:hover,.nx:focus-visible{border-color:#0b6b5c;background:#eef8f6}</style>")
 
 
 
@@ -820,6 +825,70 @@ def area_pref(pref_code: str):
     return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + "</div></body></html>")
 
 
+# 同じ市区町村の、別の製品のページ。**あるページにしかリンクしない**（製品ごとに収録範囲が違う。
+# 例: 災害危険区域は条例のある588市区町村だけ）。一覧は各製品の sitemap.xml から取り、
+# 取れなかったときは前回の控え（data/sibling_codes.json）を使う。
+SIBLINGS = [
+    ("krefuge", "避難所", "この市区町村の指定避難所と、住所から徒歩何分か"),
+    ("kriskarea", "災害危険区域", "条例で建築が制限される区域と、その基準"),
+    ("kmorido", "盛土規制区域", "宅地造成・盛土の規制がかかる区域"),
+    ("ktsunami", "津波浸水想定", "津波で何メートル浸かる想定か"),
+]
+_SIB_CACHE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "sibling_codes.json")
+
+
+def _load_sibling_codes():
+    """製品ごとに {市区町村コード: そのページのパス部分}。
+
+    政令市は各製品とも「fukuoka-fukuoka」のようなローマ字のスラッグで載っている（コードでは載らない）。
+    スラッグの付け方は khazard と同じなので CODE_BY_SLUG でコードに戻し、リンクは相手の載せ方どおりにする。
+    """
+    try:
+        old = json.load(open(_SIB_CACHE, encoding="utf-8"))
+    except Exception:
+        old = {}
+    out = {}
+    for key, _, _ in SIBLINGS:
+        try:
+            r = requests.get("https://kurage.exbridge.jp/%s.php/sitemap.xml" % key, timeout=20,
+                             headers={"User-Agent": "khazard-sibling-links/1.0"})
+            r.raise_for_status()
+            m = {}
+            for seg in re.findall(r"/area/([0-9a-z-]+)<", r.text):
+                code = seg if re.fullmatch(r"\d{5}", seg) else CODE_BY_SLUG.get(seg)
+                if code and code not in m:
+                    m[code] = seg
+                elif code and not re.fullmatch(r"\d{5}", seg):
+                    m[code] = seg          # スラッグがあればそちらを正とする
+            out[key] = m if m else old.get(key, {})
+        except Exception:
+            out[key] = old.get(key, {})
+    try:
+        json.dump(out, open(_SIB_CACHE, "w", encoding="utf-8"))
+    except Exception:
+        pass
+    return out
+
+
+SIBLING_CODES = _load_sibling_codes()
+
+
+def _next_block(code, city, full):
+    """判定のすぐ下に置く「同じ市区町村で、次に確かめること」。
+
+    2026-09-27 実測: 神奈川の市区町村ページに検索で来た207人のうち、他のページへ進んだのは18人。
+    関連リンクはページの最下部にあり、しかも各製品のトップへ飛ばしていた（同じ市区町村の続きが見えない）。
+    """
+    q = requests.utils.quote(full)
+    cards = ['<a class="nx" href="/kflood.php/?q=%s"><b>洪水・内水</b><span>川があふれたとき・下水があふれたとき、何メートル浸かる想定か</span></a>' % q]
+    for key, label, desc in SIBLINGS:
+        seg = SIBLING_CODES.get(key, {}).get(code)
+        if seg:
+            cards.append('<a class="nx" href="/%s.php/area/%s"><b>%s</b><span>%s</span></a>' % (key, seg, label, desc))
+    return ('<section class="doc" id="next"><h2>同じ%sで、次に確かめること</h2>'
+            '<div class="nxgrid">%s</div></section>' % (html_escape(city), "".join(cards)))
+
+
 @app.get("/area/{slug}", response_class=HTMLResponse)
 def area(slug: str):
     d = _muni_of(slug)
@@ -890,6 +959,7 @@ def area(slug: str):
             + '<div class="card"><form id="f"><input id="q" placeholder="例: %s" value="%s" autocomplete="off">'
               '<button id="b">判定する</button></form><div class="res" id="r"></div></div>'
               % (html_escape(example), html_escape(example))
+            + _next_block(code, city, full)
             + _jma_block(full)
             + stats
             + _official_block(code, full)
