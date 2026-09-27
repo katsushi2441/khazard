@@ -13645,8 +13645,8 @@
     "address": "新潟県妙高市栄町5-1",
     "tel": "0255-74-0002",
     "url": "https://www.city.myoko.niigata.jp/docs/454.html",
-    "http": "200",
-    "ok": true
+    "http": "404",
+    "ok": false
    }
   },
   "15218": {
@@ -13943,7 +13943,7 @@
     "address": "新潟県刈羽郡刈羽村大字割町新田215番地1",
     "tel": "0257-45-3912",
     "url": "https://www.vill.kariwa.niigata.jp/www/info/detail.jsp?id=5095",
-    "http": "200",
+    "http": "000",
     "ok": true
    },
    "洪水": {
@@ -13953,7 +13953,7 @@
     "address": "新潟県刈羽郡刈羽村大字割町新田215番地1",
     "tel": "0257-45-3912",
     "url": "https://www.vill.kariwa.niigata.jp/www/info/detail.jsp?id=957",
-    "http": "200",
+    "http": "000",
     "ok": true
    }
   },
@@ -19543,7 +19543,7 @@
     "address": "熊野市井戸町796番地",
     "tel": "0597-89-4111（内線336）",
     "url": "https://www.city.kumano.lg.jp/prevention/?content=618",
-    "http": "200",
+    "http": "000",
     "ok": true
    },
    "洪水": {
@@ -19553,7 +19553,7 @@
     "address": "三重県熊野市井戸町796",
     "tel": "0597-89-4111",
     "url": "https://www.city.kumano.lg.jp/prevention/?content=618",
-    "http": "200",
+    "http": "000",
     "ok": true
    }
   },
@@ -26865,8 +26865,8 @@
     "address": "愛媛県越智郡上島町弓削下弓削1037",
     "tel": "0897-77-4118",
     "url": "https://www.town.kamijima.lg.jp/soshiki/15/4082.html",
-    "http": "504",
-    "ok": false
+    "http": "200",
+    "ok": true
    }
   },
   "38386": {
@@ -34226,5 +34226,5 @@
    }
   }
  },
- "_verified": "2026-09-22"
+ "_verified": "2026-09-28"
 }
