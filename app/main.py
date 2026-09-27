@@ -61,6 +61,8 @@ def fmt_designated(dt):
     return "不明" if dt.year >= 9999 else str(dt)
 
 app = FastAPI(title="Kurage 土砂災害ハザードマップ")
+from app import distmode  # noqa: E402  配布先で KURAGE_PUBLIC_ORIGIN を設定したときだけ働く
+distmode.install(app)
 _rate = {}
 
 
@@ -388,18 +390,18 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 <dd>置けます。ソースコード一式と設置手順書を同梱した買い切り版を用意しています。住所を外部に送りたくない場合や、自社システムに組み込みたい場合に向きます。</dd>
 </dl>
 
-<h2>30秒でわかる動画</h2>
+<!--kurage-only--><h2>30秒でわかる動画</h2>
 <p>実際の画面で、判定から注意書きまでの流れをまとめました。</p>
 <p class="note-sm">冒頭の実写カットは MiniMax H3 を自社サーバーで動かして生成しています。</p>
 <div class="pv">
 <video src="https://kurage.exbridge.jp/pv/khazard-pv-30s.mp4"
        poster="https://kurage.exbridge.jp/pv/khazard-pv-poster.jpg"
        controls playsinline preload="none" width="1920" height="1080"></video>
-</div>
+</div><!--/kurage-only-->
 
-<h2>自社サーバーに置く（買い切り版）</h2>
+<!--kurage-only--><h2>自社サーバーに置く（買い切り版）</h2>
 <p>同じ仕組みを自社のサーバーで動かせます。ソースコード同梱・MITライセンス・外部の有料APIなしで、追加費用はかかりません。</p>
-<p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-lp">買い切り版を見る（税込55,000円）</a></p>
+<p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-lp">買い切り版を見る（税込55,000円）</a></p><!--/kurage-only-->
 </section>
 
 <p style="font-size:12.5px;color:#7d8a97;margin-top:10px">議員・政党事務所の方へ: このページを事務所の名前で運用できます → <a href="/bousai-giin.html">地域防災情報サービス</a></p>
@@ -412,7 +414,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 <p class="src">出典: 国土数値情報（土砂災害警戒区域データ）国土交通省 を加工して作成。
 この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の基盤地図情報を使用した（承認番号 平27情使、第585号）。
 住所の座標変換に国土地理院 地名検索APIを利用しています。<br>
-提供: <a href="https://exbridge.jp/">株式会社エクスブリッジ</a></p><p class="src"><a href="https://exbridge.jp/politech/#bousai?ref=kurage-khazard" rel="noopener">住民が検索している防災の言葉（32語）</a> ・ <a href="https://exbridge.jp/ai-system/?ref=kurage-khazard" rel="noopener">AIでできること</a> ・ <a href="https://exbridge.jp/solution/seito.html?ref=kurage-khazard" rel="noopener">政党・議員事務所むけ</a></p>
+提供: <a href="https://exbridge.jp/">株式会社エクスブリッジ</a></p><!--kurage-only--><p class="src"><a href="https://exbridge.jp/politech/#bousai?ref=kurage-khazard" rel="noopener">住民が検索している防災の言葉（32語）</a> ・ <a href="https://exbridge.jp/ai-system/?ref=kurage-khazard" rel="noopener">AIでできること</a> ・ <a href="https://exbridge.jp/solution/seito.html?ref=kurage-khazard" rel="noopener">政党・議員事務所むけ</a></p><!--/kurage-only-->
 </div>
 <script>
 const f=document.getElementById('f'),q=document.getElementById('q'),b=document.getElementById('b'),r=document.getElementById('r');
@@ -977,18 +979,18 @@ def area(slug: str):
               '地図で見るなら <a href="/khazard.php/map/">全国地図</a>、全国版は '
               '<a href="/khazard.php/">Kurage 土砂災害ハザードマップ</a> です。</p></section>'
               '<section class="doc"><h2>同じ仕組みを、自分のところで動かす</h2>'
-              '<p>%sを含む全国1,603市区町村ぶんのこの画面を、事務所・自治体・会社の名前で公開できます。'
+              '<!--kurage-only--><p>%sを含む全国1,603市区町村ぶんのこの画面を、事務所・自治体・会社の名前で公開できます。'
               'ソースコード同梱・MITライセンス・月額なし。国土数値情報の土砂災害警戒区域179万区域を同梱していて、'
               '判定は置いた場所で完結します（外部の有料APIは使いません）。</p>'
               '<p><a class="cta" href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-area">'
-              'オンプレミス版を見る（税込55,000円）</a></p>'
+              'オンプレミス版を見る（税込55,000円）</a></p><!--/kurage-only-->'
               # **いちばん人が来るページに、いちばん単価の高い商品の案内を置く。**
               # 2026-09-24 実測: khazard の市区町村ページは28日で45クリック稼いでいるのに、
               # AI-IT顧問契約への導線が0本だった（krefuge のトップにだけ付いていた）。
-              '<p style="font-size:14px;margin-top:10px">名古屋市内の会社なら、'
+              '<!--kurage-only--><p style="font-size:14px;margin-top:10px">名古屋市内の会社なら、'
               '<a href="https://exbridge.jp/ai-it-komon.html?ref=khazard-area" target="_blank" rel="noopener">'
               'AI-IT顧問契約</a>（月15時間・税別150,000円）の期間中に構築できる商品は、'
-              '商品代金をいただかず当社が設置まで行います。ソースコードごと御社の資産として残ります。</p>'
+              '商品代金をいただかず当社が設置まで行います。ソースコードごと御社の資産として残ります。</p><!--/kurage-only-->'
               '</section>' % (exq, exq, full, full)
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
               '／住所検索: 国土地理院 地名検索API。区域数は住所文字列から市区町村を判定して数えた実測値です'
@@ -1206,7 +1208,7 @@ th{background:#eef6f5;white-space:nowrap}
 </form>
 <p class="muted" style="margin-top:16px">背景地図: 国土地理院 淡色地図。区域: 国土数値情報「土砂災害警戒区域データ(A33)」国土交通省を加工して作成。<br>
 本サービスの判定は参考情報です。宅地建物取引業法の重要事項説明など、根拠を示す必要がある用途には使えません。</p>
-<p class="muted" style="margin-top:14px">このシステムは買い切りで自社サーバーに設置できます → <a href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-map" target="_blank" rel="noopener" style="color:#0a726b">Kurage 土砂災害ハザードマップ（税込55,000円・ソースコード同梱）</a></p>
+<!--kurage-only--><p class="muted" style="margin-top:14px">このシステムは買い切りで自社サーバーに設置できます → <a href="https://kappstore.exbridge.jp/app.php?id=02b945f9c87c9d86&amp;ref=khazard-map" target="_blank" rel="noopener" style="color:#0a726b">Kurage 土砂災害ハザードマップ（税込55,000円・ソースコード同梱）</a></p><!--/kurage-only-->
 </main>
 <script>
 var BASE='../';
