@@ -20,3 +20,4 @@ data/tiles/
 *.bak-*
 outputs/
 data/jma_area.json
+data/sibling_codes.json
