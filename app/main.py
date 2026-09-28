@@ -61,7 +61,7 @@ def fmt_designated(dt):
     return "不明" if dt.year >= 9999 else str(dt)
 
 app = FastAPI(title="Kurage 土砂災害ハザードマップ")
-from app import distmode  # noqa: E402  配布先で KURAGE_PUBLIC_ORIGIN を設定したときだけ働く
+from app import distmode, kbousai_link  # noqa: E402  配布先で KURAGE_PUBLIC_ORIGIN を設定したときだけ働く
 distmode.install(app)
 _rate = {}
 
@@ -332,6 +332,7 @@ th{background:#f4f8fb;width:32%;font-weight:700}
 .cta{display:inline-block;margin-top:8px;padding:12px 22px;font-size:15.5px;font-weight:800;color:#fff;background:#0a9a8f;border-radius:10px;text-decoration:none}
 </style></head><body><div class="wrap">
 <h1>Kurage 土砂災害ハザードマップ</h1>
+<!--kurage-only--><div style="max-width:1000px;margin:12px auto 14px;background:#eef6fb;border:1px solid #bcd9ec;border-radius:10px;padding:10px 14px;font-size:14px;line-height:1.7;color:#16232e;box-sizing:border-box"><b>台風・大雨のときは、いま逃げた方がいい？</b> 住所か現在地で、警報・キキクル・台風の進路・川・津波・避難情報をまとめて答えます。 <a href="https://kurage.exbridge.jp/kbousai.php/?ref=khazard-top" style="font-weight:700;color:#0b5d8f">Kurage 防災AIチャットで聞く →</a></div><!--/kurage-only-->
 <p class="lead">住所を入れると、国土交通省が公開している土砂災害警戒区域のデータと照らして、
 イエローゾーン・レッドゾーンの内外を判定します。全国47都道府県・約179万区域を収録。
 判定に使ったデータの時点も必ず表示します。</p>
@@ -824,7 +825,7 @@ def area_pref(pref_code: str):
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
     head = _area_head(pref, "pref/" + pref_code, desc,
                       title="%sの土砂災害警戒区域｜市区町村別の指定状況 | Kurage" % pref)
-    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + "</div></body></html>")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', ''), 1) + "</div></body></html>")
 
 
 # 同じ市区町村の、別の製品のページ。**あるページにしかリンクしない**（製品ごとに収録範囲が違う。
@@ -1000,7 +1001,7 @@ def area(slug: str):
                       title="%sのハザードマップ（土砂災害）｜警戒区域%s区域を住所で判定 | Kurage"
                             % (full, f"{z:,}") if z else "%sのハザードマップ（土砂災害）｜指定区域なし | Kurage" % full,
                       faq=faq)
-    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + _SCRIPT + "</body></html>")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', full), 1) + _SCRIPT + "</body></html>")
 
 
 @app.get("/area", response_class=HTMLResponse)
@@ -1025,7 +1026,7 @@ def area_index():
               '<th>区域数</th><th>うちレッド</th></tr>' + rows + '</table></div>'
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
     head = _area_head("地域一覧", "", desc, title="全国の土砂災害警戒区域｜都道府県・市区町村別の指定状況 | Kurage")
-    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body + "</div></body></html>")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', ''), 1) + "</div></body></html>")
 
 
 _LLMS_BODY = """# Kurage 土砂災害ハザードマップ
