@@ -825,7 +825,7 @@ def area_pref(pref_code: str):
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
     head = _area_head(pref, "pref/" + pref_code, desc,
                       title="%sの土砂災害警戒区域｜市区町村別の指定状況 | Kurage" % pref)
-    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', ''), 1) + "</div></body></html>")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', ''), 1) + kbousai_link.giin_links('khazard-area') + "</div></body></html>")
 
 
 # 同じ市区町村の、別の製品のページ。**あるページにしかリンクしない**（製品ごとに収録範囲が違う。
@@ -1001,7 +1001,7 @@ def area(slug: str):
                       title="%sのハザードマップ（土砂災害）｜警戒区域%s区域を住所で判定 | Kurage"
                             % (full, f"{z:,}") if z else "%sのハザードマップ（土砂災害）｜指定区域なし | Kurage" % full,
                       faq=faq)
-    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', full), 1) + _SCRIPT + "</body></html>")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', full), 1) + kbousai_link.giin_links('khazard-area') + _SCRIPT + "</body></html>")
 
 
 @app.get("/area", response_class=HTMLResponse)
@@ -1026,7 +1026,7 @@ def area_index():
               '<th>区域数</th><th>うちレッド</th></tr>' + rows + '</table></div>'
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
     head = _area_head("地域一覧", "", desc, title="全国の土砂災害警戒区域｜都道府県・市区町村別の指定状況 | Kurage")
-    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', ''), 1) + "</div></body></html>")
+    return HTMLResponse(head + _STYLE + _AREA_CSS + '</head><body><div class="wrap">' + body.replace('</h1>', '</h1>' + kbousai_link.bar('khazard-area', ''), 1) + kbousai_link.giin_links('khazard-area') + "</div></body></html>")
 
 
 _LLMS_BODY = """# Kurage 土砂災害ハザードマップ

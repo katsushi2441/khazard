@@ -18,3 +18,11 @@ def bar(ref: str, q: str = '') -> str:
     return ('<!--kurage-only--><div style="' + _BOX + '"><b>台風・大雨のときは、いま逃げた方がいい？</b> '
             '住所か現在地で、警報・キキクル・台風の進路・川・津波・避難情報をまとめて答えます。 '
             f'<a href="{href}" style="font-weight:700;color:#0b5d8f">{act}</a></div><!--/kurage-only-->')
+
+
+def giin_links(ref: str) -> str:
+    """国会での議論（xb4g.com の国会トラッカー）へのリンク。当社の公開先だけに出す。"""
+    return ('<!--kurage-only--><p style="max-width:1000px;margin:18px auto 0;font-size:13px;color:#5d6b7a">国会での議論: '
+            f'<a href="https://xb4g.com/giin/tracker/rissai-shomei?ref={quote(ref)}">罹災証明書と応急修理</a>・'
+            f'<a href="https://xb4g.com/giin/tracker/daiko-yuso?ref={quote(ref)}">鉄道災害と代行バス</a>'
+            '（国会の質疑と政府答弁）</p><!--/kurage-only-->')
