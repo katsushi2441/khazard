@@ -730,6 +730,22 @@ def _jma_block(full):
             '土砂災害の危険度は雨で変わります。区域の内外（下）は平時の指定で、いまの危険度ではありません。</p></section>')
 
 
+
+def _juyo_block(pref_code: str) -> str:
+    """愛知県の市区町村ページにだけ、不動産会社向けに重説の災害4項目の下調べ（kflood /juyo）を案内する。
+    2026-10-06: 地域ページは検索で人が来るが、店（kappstore）へは0。見ている人のうち買い手になりうるのは
+    物件の重説を作る宅建業者。/juyo は津波災害警戒区域と造成宅地防災区域が愛知県の分しかないので、愛知県以外には出さない。"""
+    if str(pref_code) != "23":
+        return ""
+    return ('<!--kurage-only--><section class="doc"><h2>不動産会社の方へ：重説の災害4項目を住所から下調べ</h2>'
+            '<p>重要事項説明の災害4項目（造成宅地防災区域・土砂災害警戒区域・津波災害警戒区域・水害ハザードマップ上の所在地）を、'
+            '物件の住所から一度に調べられます。データが欠けていて判定できない場所は「該当なし」と書かず、「確認できない」と表示します。'
+            '重要事項説明そのものではなく、調査の下ごしらえです。</p>'
+            '<p><a class="cta" href="/kflood.php/juyo?ref=khazard-area-juyo">重説の災害項目を住所で調べる</a></p>'
+            '<p style="font-size:14px">自社の名前で動かす版は '
+            '<a href="https://kappstore.exbridge.jp/app.php?id=01d71e3bd7f717a8&amp;ref=khazard-area-juyo">Kurage 重説 災害項目チェック</a> です。</p>'
+            '</section><!--/kurage-only-->')
+
 def _official_block(code, city):
     """市区町村の公式ハザードマップへの導線。担当課と電話も出す。"""
     w = _wagamachi().get(code) or {}
@@ -993,6 +1009,7 @@ def area(slug: str):
               'AI-IT顧問契約</a>（月15時間・税別150,000円）の期間中に構築できる商品は、'
               '商品代金をいただかず当社が設置まで行います。ソースコードごと御社の資産として残ります。</p><!--/kurage-only-->'
               '</section>' % (exq, exq, full, full)
+            + _juyo_block(d["pref_code"])
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
               '／住所検索: 国土地理院 地名検索API。区域数は住所文字列から市区町村を判定して数えた実測値です'
               '（全国179万区域のうち0.33%は合併前の旧市町村名のため、どの市区町村にも計上していません）。'
