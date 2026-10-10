@@ -996,6 +996,28 @@ def _load_sibling_codes():
 SIBLING_CODES = _load_sibling_codes()
 
 
+_KFLOOD_SEGS = {"t": 0.0, "m": {}}
+
+
+def _kflood_segs():
+    """kflood の市区町村ページ {団体コード: パス部分}。kflood の sitemap.xml から1日1回取る（取れなければ空＝住所判定へ送る）。"""
+    if _KFLOOD_SEGS["m"] and time.time() - _KFLOOD_SEGS["t"] < 86400:
+        return _KFLOOD_SEGS["m"]
+    try:
+        r = requests.get("https://kurage.exbridge.jp/kflood.php/sitemap.xml", timeout=15,
+                         headers={"User-Agent": "khazard-sibling-links/1.0"})
+        m = {}
+        for seg in re.findall(r"/area/([0-9a-z-]+)<", r.text):
+            c = seg if re.fullmatch(r"\d{5}", seg) else CODE_BY_SLUG.get(seg)
+            if c:
+                m[c] = seg
+        if m:
+            _KFLOOD_SEGS.update(t=time.time(), m=m)
+    except Exception:  # noqa: BLE001
+        pass
+    return _KFLOOD_SEGS["m"]
+
+
 def _next_block(code, city, full):
     """判定のすぐ下に置く「同じ市区町村で、次に確かめること」。
 
@@ -1003,7 +1025,14 @@ def _next_block(code, city, full):
     関連リンクはページの最下部にあり、しかも各製品のトップへ飛ばしていた（同じ市区町村の続きが見えない）。
     """
     q = requests.utils.quote(full)
-    cards = ['<a class="nx" href="/kflood.php/?q=%s"><b>洪水・内水</b><span>川があふれたとき・下水があふれたとき、何メートル浸かる想定か</span></a>' % q]
+    # 洪水・内水は kflood の同じ市区町村ページへ（区のページからは市のページへ）。ページが無ければ住所判定へ
+    kc = WARD[code]["city_code"] if code in WARD else code
+    kseg = _kflood_segs().get(kc)
+    if kseg:
+        cards = ['<a class="nx" href="/kflood.php/area/%s#ref=khazard-area"><b>洪水・内水%s</b><span>避難場所のうち何件が洪水の浸水想定区域の中か・何メートル浸かる想定か</span></a>'
+                 % (kseg, ("（%s）" % WARD[code]["city"]) if code in WARD else "")]
+    else:
+        cards = ['<a class="nx" href="/kflood.php/?q=%s"><b>洪水・内水</b><span>川があふれたとき・下水があふれたとき、何メートル浸かる想定か</span></a>' % q]
     for key, label, desc in SIBLINGS:
         seg = SIBLING_CODES.get(key, {}).get(code)
         lab = label
