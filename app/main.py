@@ -893,7 +893,7 @@ def _wards_block(d):
                 '<p class="src" style="margin-top:8px"><a href="/khazard.php/area/%s">%s全体のページ</a>'
                 '（市全体で%s区域）</p></section>'
                 % (city, links, SLUG_BY_CODE.get(cc, cc), city, f'{city_d["zones"]:,}' if city_d else "-"))
-    rows = "".join('<tr><td><a href="/khazard.php/area/%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+    rows = "".join('<tr><td style="white-space:nowrap"><a href="/khazard.php/area/%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
                    % (w["code"], w["ward"], f'{w["zones"]:,}', f'{w["yellow"]:,}', f'{w["red"]:,}',
                       f'{w["planned"]:,}' if w["planned"] else "-") for w in sorted(ws, key=lambda x: -x["zones"]))
     tot = sum(w["zones"] for w in ws)
