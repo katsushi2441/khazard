@@ -581,6 +581,57 @@ for _d in sorted(MUNI.values(), key=lambda x: -x["zones"]):
     MUNI_BY_PREF.setdefault(_d["pref_code"], []).append(_d)
 PREF_NAME = {c: v[0]["pref"] for c, v in MUNI_BY_PREF.items()}
 
+
+def _load_wards():
+    """政令指定都市の区（scripts/build_muni_stats.py が ward_stats / ward_unassigned に作る）。
+
+    2026-10-10: 政令市は市でまとめた1ページしか無く（横浜市19,546区域・広島市22,439区域で1ページ）、
+    「横浜市鶴見区 ハザードマップ」のような区の検索の受け皿が無かった。区の団体コードは
+    総務省の表（data/seirei_wards.json・scripts/fetch_wards.py）から取る。
+    区への振り分けは住所の区名だけで行い、区名が無い住所は推し量らずに「振り分けられない」として数える。
+    **区域0の区は、その市に振り分けられない区域が1件も無いときだけ載せる**
+    （振り分けられない区域があると、0が本当に0なのか言い切れないため）。
+    """
+    wards, unassigned = {}, {}
+    try:
+        meta = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                           "data", "seirei_wards.json"), encoding="utf-8"))
+        with conn() as cn, cn.cursor() as cur:
+            cur.execute("SELECT muni_code,city_code,pref_code,pref,city,ward,zones,yellow,red,planned,"
+                        "steep,debris,slide,first_on,last_on,unknown_on,samples FROM ward_stats")
+            cols = ("code", "city_code", "pref_code", "pref", "city", "ward", "zones", "yellow", "red",
+                    "planned", "steep", "debris", "slide", "first_on", "last_on", "unknown_on", "samples")
+            for r in cur.fetchall():
+                d = dict(zip(cols, r))
+                wards[d["code"]] = d
+            cur.execute("SELECT city_code, zones, examples FROM ward_unassigned")
+            for cc, z, ex in cur.fetchall():
+                unassigned[cc] = {"zones": z, "examples": ex}
+    except Exception as e:  # noqa: BLE001
+        print("ward_stats を読めません（区のページは出しません）:", e)
+        return {}, {}
+    for code, w in meta.get("wards", {}).items():
+        cc = w["city_code"]
+        if code in wards or cc not in MUNI or cc not in unassigned or unassigned[cc]["zones"]:
+            continue
+        wards[code] = dict(code=code, city_code=cc, pref_code=code[:2], pref=w["pref"], city=w["city"],
+                           ward=w["ward"], zones=0, yellow=0, red=0, planned=0, steep=0, debris=0,
+                           slide=0, first_on=None, last_on=None, unknown_on=0, samples=[])
+    for d in wards.values():
+        d["muni"] = d["city"] + d["ward"]
+        d["is_ward"] = True
+    return wards, unassigned
+
+
+WARD, WARD_UNASSIGNED = _load_wards()
+# 市コード -> [区（団体コード順）]
+WARDS_BY_CITY = {}
+for _d in sorted(WARD.values(), key=lambda x: x["code"]):
+    WARDS_BY_CITY.setdefault(_d["city_code"], []).append(_d)
+for _c in WARD:
+    SLUG_BY_CODE.setdefault(_c, _c)
+    CODE_BY_SLUG.setdefault(_c, _c)
+
 # トップに47都道府県を出す（item: 入口）。**5市だけ並べていたのを置き換えた。**
 # 2026-09-21 実測で、Xから来た90人が全員トップに着地していたのに、その日に検索で
 # 来ていた綾瀬市・茅ヶ崎市・箱根町へトップから1クリックで行けなかった。
@@ -592,10 +643,10 @@ INDEX = INDEX.replace("__PREF_LINKS__", _PREF_LINKS)
 
 def _muni_of(slug):
     """スラッグ（romaji でも団体コードでも）から市区町村を引く。"""
-    code = CODE_BY_SLUG.get(slug) or (slug if slug in MUNI else None)
+    code = CODE_BY_SLUG.get(slug) or (slug if (slug in MUNI or slug in WARD) else None)
     if code is None:
         return None
-    d = MUNI.get(code)
+    d = MUNI.get(code) or WARD.get(code)
     if d is None and code in ZERO_MUNI:
         pref, muni = ZERO_MUNI[code]
         d = dict(code=code, pref_code=code[:2], pref=pref, muni=muni, zones=0, yellow=0,
@@ -814,6 +865,58 @@ def _terms_block():
             'このページはどちらの言い方でも同じ答えを返します。</p></section>')
 
 
+def _ward_row(city_code, city):
+    """都道府県の一覧で、政令市の行の下に区を並べる（区のページへの入口）。"""
+    ws = WARDS_BY_CITY.get(city_code)
+    if not ws:
+        return ""
+    return ('<tr><td colspan="4" style="font-size:13px;background:#fbfdfd;padding-left:18px">%sの区: %s</td></tr>'
+            % (city, "・".join('<a href="/khazard.php/area/%s">%s</a>（%s）' % (w["code"], w["ward"], f'{w["zones"]:,}')
+                              for w in ws)))
+
+
+def _wards_block(d):
+    """市のページ: 区ごとの指定状況。区のページ: 同じ市の他の区。どちらも区域数つき。"""
+    is_ward = d.get("is_ward")
+    cc = d["city_code"] if is_ward else d["code"]
+    ws = WARDS_BY_CITY.get(cc)
+    if not ws:
+        return ""
+    city = ws[0]["city"]
+    ua = WARD_UNASSIGNED.get(cc) or {"zones": 0, "examples": []}
+    city_d = MUNI.get(cc)
+    if is_ward:
+        others = [w for w in ws if w["code"] != d["code"]]
+        links = "".join('<a href="/khazard.php/area/%s">%s%s</a>（%s区域）<br>'
+                        % (w["code"], city, w["ward"], f'{w["zones"]:,}') for w in others)
+        return ('<section class="doc"><h2>%sの他の区</h2><div class="mlist">%s</div>'
+                '<p class="src" style="margin-top:8px"><a href="/khazard.php/area/%s">%s全体のページ</a>'
+                '（市全体で%s区域）</p></section>'
+                % (city, links, SLUG_BY_CODE.get(cc, cc), city, f'{city_d["zones"]:,}' if city_d else "-"))
+    rows = "".join('<tr><td><a href="/khazard.php/area/%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                   % (w["code"], w["ward"], f'{w["zones"]:,}', f'{w["yellow"]:,}', f'{w["red"]:,}',
+                      f'{w["planned"]:,}' if w["planned"] else "-") for w in sorted(ws, key=lambda x: -x["zones"]))
+    tot = sum(w["zones"] for w in ws)
+    if ua["zones"]:
+        ex = "・".join(("市名のあとに区名が無いもの%s件" if k == "（市名のみ）" else "「%s…」%%s件" % html_escape(k))
+                       % f"{v:,}" for k, v in (ua["examples"] or [])[:4])
+        note = ('<p class="src"><strong>区に振り分けられなかった区域が%s件あります</strong>'
+                '（住所に区名が書かれていない・再編前の旧区名など。例: %s）。'
+                '推し量って区に入れることはせず、市全体の数にだけ含めています。'
+                '区の合計%s＋振り分けられない%s＝市全体%s区域です。</p>'
+                % (f'{ua["zones"]:,}', ex, f"{tot:,}", f'{ua["zones"]:,}', f"{tot + ua['zones']:,}"))
+    else:
+        note = ('<p class="src">%sの区域はすべて住所の区名で区に振り分けられました（区の合計＝市全体%s区域）。</p>'
+                % (city, f"{tot:,}"))
+    return ('<section class="doc" id="wards"><h2>%sの区ごとの指定状況</h2>'
+            '<p>区を選ぶと、その区の区域数・現象別の内訳・区域の例が出ます。</p>'
+            '<div class="mwrap"><table class="mtbl"><tr><th>区</th><th>区域数</th><th>イエロー</th>'
+            '<th>レッド</th><th>指定予定</th></tr>%s</table></div>%s'
+            '<p class="src">区は国土数値情報 A33（2026-03-06時点）の住所に書かれた区名で振り分けた実測値です。'
+            '区の団体コードは総務省「全国地方公共団体コード」によります。</p></section>'
+            % (city, rows, note))
+
+
 @app.get("/area/pref/{pref_code}", response_class=HTMLResponse)
 def area_pref(pref_code: str):
     """都道府県ごとの一覧。市区町村ページをクロールさせる内部リンクの束ね役。"""
@@ -829,6 +932,7 @@ def area_pref(pref_code: str):
     rows = "".join(
         '<tr><td><a href="/khazard.php/area/%s">%s</a></td><td>%s</td><td>%s</td><td>%s</td></tr>'
         % (SLUG_BY_CODE[d["code"]], d["muni"], f'{d["zones"]:,}', f'{d["yellow"]:,}', f'{d["red"]:,}')
+        + _ward_row(d["code"], d["muni"])
         for d in lst)
     body = ('<h1><a href="/khazard.php/">%s</a>の土砂災害警戒区域（市区町村一覧）</h1>' % pref
             + '<p class="lead">%sでは<strong>%s市区町村</strong>に計<strong>%s区域</strong>が指定されています'
@@ -902,8 +1006,13 @@ def _next_block(code, city, full):
     cards = ['<a class="nx" href="/kflood.php/?q=%s"><b>洪水・内水</b><span>川があふれたとき・下水があふれたとき、何メートル浸かる想定か</span></a>' % q]
     for key, label, desc in SIBLINGS:
         seg = SIBLING_CODES.get(key, {}).get(code)
+        lab = label
+        if not seg and code in WARD:
+            # 区のページが無い製品は、市のページへ送る（行き先が市単位だと分かるように書く）
+            seg = SIBLING_CODES.get(key, {}).get(WARD[code]["city_code"])
+            lab = "%s（%s）" % (label, WARD[code]["city"])
         if seg:
-            cards.append('<a class="nx" href="/%s.php/area/%s"><b>%s</b><span>%s</span></a>' % (key, seg, label, desc))
+            cards.append('<a class="nx" href="/%s.php/area/%s"><b>%s</b><span>%s</span></a>' % (key, seg, lab, desc))
     return ('<section class="doc" id="next"><h2>同じ%sで、次に確かめること</h2>'
             '<div class="nxgrid">%s</div></section>' % (html_escape(city), "".join(cards)))
 
@@ -921,7 +1030,16 @@ def area(slug: str):
     example = samples[0]["address"] if samples else full
     exq = requests.utils.quote(example)
 
-    if z == 0:
+    is_ward = bool(d.get("is_ward"))
+    if z == 0 and is_ward:
+        desc = ("%sには土砂災害警戒区域・特別警戒区域の指定がありません（国土交通省 A33・2026-03-06時点を住所の区名で数えた実測）。"
+                "同じ%sの他の区には指定があります。住所を入れて確かめられます。" % (full, d["city"]))
+        lead = ('<p class="lead">国土交通省の土砂災害警戒区域データ（A33・2026-03-06時点）を住所の区名で数えたところ、'
+                '<strong>%sに指定された区域はありませんでした</strong>。%sの区域はすべて区に振り分けられており、'
+                '振り分けられなかった区域はありません。同じ市の他の区には指定があるので、職場や実家の住所も確かめてみてください。</p>'
+                % (full, d["city"]))
+        stats = ""
+    elif z == 0:
         desc = ("%sには土砂災害警戒区域・特別警戒区域の指定が1件もありません（国土交通省 A33 実測）。"
                 "隣接する市区町村では指定があります。住所を入れて確かめられます。" % full)
         lead = ('<p class="lead">国土交通省の土砂災害警戒区域データ（A33）を数えたところ、<strong>%sには指定された区域が1件もありません</strong>。'
@@ -957,7 +1075,8 @@ def area(slug: str):
                  % (city, cards, phen or '<p class="src">現象の内訳はデータに記載がありません。</p>', span, ex))
 
     # 同じ県の他の市区町村へ（内部リンク。サイトマップに載せるだけではクロールされない）
-    sib = [x for x in MUNI_BY_PREF.get(d["pref_code"], []) if x["code"] != code][:40]
+    sib = [x for x in MUNI_BY_PREF.get(d["pref_code"], [])
+           if x["code"] != code and x["code"] != d.get("city_code")][:40]
     sib_html = ""
     if sib:
         sib_html = ('<section class="doc"><h2>%sの他の市区町村</h2><div class="mlist">%s</div>'
@@ -981,8 +1100,9 @@ def area(slug: str):
             + _next_block(code, city, full)
             + _jma_block(full)
             + stats
-            + _official_block(code, full)
-            + _howto_block(full)
+            + _wards_block(d)
+            + (_official_block(d["city_code"], pref + d["city"]) if is_ward else _official_block(code, full))
+            + _howto_block(pref + d["city"] if is_ward else full)
             + _terms_block()
             + sib_html
             + '<section class="doc"><h2>あわせて確認したい方へ</h2>'
@@ -1013,7 +1133,8 @@ def area(slug: str):
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成'
               '／住所検索: 国土地理院 地名検索API。区域数は住所文字列から市区町村を判定して数えた実測値です'
               '（全国179万区域のうち0.33%は合併前の旧市町村名のため、どの市区町村にも計上していません）。'
-              '最終確認は自治体の最新のハザードマップでお願いします。</p>')
+              + ('政令指定都市の区は、住所に書かれた区名で振り分けました（データ時点 2026-03-06）。' if is_ward else '')
+              + '最終確認は自治体の最新のハザードマップでお願いします。</p>')
     head = _area_head(full, canon, desc,
                       title="%sのハザードマップ（土砂災害）｜警戒区域%s区域を住所で判定 | Kurage"
                             % (full, f"{z:,}") if z else "%sのハザードマップ（土砂災害）｜指定区域なし | Kurage" % full,
@@ -1037,8 +1158,9 @@ def area_index():
     body = ('<h1><a href="/khazard.php/">地域から土砂災害の警戒区域を調べる</a></h1>'
             '<p class="lead">全国<strong>%s市区町村</strong>・計<strong>%s区域</strong>を収録しています。'
             '都道府県を選ぶと市区町村ごとの指定件数が出ます。住所で直接調べるなら '
-            '<a href="/khazard.php/">全国版</a>、地図で見るなら <a href="/khazard.php/map/">全国地図</a> をどうぞ。</p>'
-            % (f"{len(MUNI):,}", f"{total:,}")
+            '<a href="/khazard.php/">全国版</a>、地図で見るなら <a href="/khazard.php/map/">全国地図</a> をどうぞ。'
+            '政令指定都市は区ごとのページ（%s区）もあり、都道府県のページの市の下に並べています。</p>'
+            % (f"{len(MUNI):,}", f"{total:,}", f"{len(WARD):,}")
             + '<div class="mwrap"><table class="mtbl"><tr><th>都道府県</th><th>市区町村</th>'
               '<th>区域数</th><th>うちレッド</th></tr>' + rows + '</table></div>'
             + '<p class="src">出典: 国土数値情報（土砂災害警戒区域データ A33）国土交通省 を加工して作成</p>')
@@ -1337,7 +1459,9 @@ def _sitemap():
     # 1,603市区町村＋47都道府県。枚数を出さないと検索の入口が増えない（2026-09-13 実測の結論）
     urls = (["/", "/map/", "/about", "/area/"]
             + ["/area/pref/" + pc for pc in sorted(MUNI_BY_PREF)]
-            + ["/area/" + SLUG_BY_CODE[c] for c in sorted(MUNI)])
+            + ["/area/" + SLUG_BY_CODE[c] for c in sorted(MUNI)]
+            # 政令指定都市の区（2026-10-10 追加）
+            + ["/area/" + c for c in sorted(WARD)])
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            + "".join(f'<url><loc>{base}{u}</loc><lastmod>{_LASTMOD}</lastmod><changefreq>monthly</changefreq></url>' for u in urls)

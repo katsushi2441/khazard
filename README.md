@@ -53,6 +53,21 @@ systemctl --user start khazard.service
 curl 'http://127.0.0.1:18376/api/check?q=愛知県西尾市吉良町乙川藤兼'
 ```
 
+## 地域ページ
+
+`/khazard.php/area/<団体コード>` に 1,603市区町村＋47都道府県＋政令指定都市の区（147区）。
+数字は `scripts/build_muni_stats.py` が A33 の住所文字列から数えて `muni_stats` / `ward_stats` /
+`ward_unassigned` に保存した実測値。区の団体コードは総務省「全国地方公共団体コード」から
+`scripts/fetch_wards.py` で `data/seirei_wards.json` を作る（照合の正典 krefuge の muni_vintage には区が無い）。
+区は住所の区名だけで振り分け、区名が無い住所・旧区名（浜松市「北区」等）は振り分けずに市のページで件数を開示する。
+区域0の区は、その市に振り分けられない区域が無いときだけページにする。
+
+```bash
+/usr/bin/python3 scripts/fetch_wards.py              # 区のコード表（総務省の改定時だけ）
+systemd-run --user --scope -p MemoryMax=8G /usr/bin/python3 scripts/build_muni_stats.py
+systemctl --user restart khazard.service
+```
+
 ## 取り込みの注意
 
 国土数値情報のGMLはGDALのGMLドライバではレイヤを認識できません

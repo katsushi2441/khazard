@@ -76,3 +76,46 @@ def extract(pref_code: str, address: str, muni):
         if len(name) > 1 and name[-1] in "市区町村" and s2 == name[:-1]:
             return disp, code
     return None
+
+
+# ---- 政令指定都市の区 -------------------------------------------------------
+# 正典（muni_vintage）には区のコードが無いので、総務省の表から作った
+# data/seirei_wards.json（scripts/fetch_wards.py）を使う。
+import json as _json, os as _os
+WARDS_JSON = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                           "data", "seirei_wards.json")
+# 「仙台市(太白区)」のように区名を括弧で書いた住所がある（仙台市で146件・実測）。
+# 区名そのものは書かれているので、括弧を外して照合する。
+_PAREN_RE = re.compile(r"^[（(]([^）)]{1,6}区)[）)]")
+
+
+def load_wards(path: str = WARDS_JSON):
+    """(市コード->市名, 区コード->情報, 市コード->[(正規化した区名, 区コード)] 長い順)。"""
+    d = _json.load(open(path, encoding="utf-8"))
+    by_city = collections.defaultdict(list)
+    for code, w in d["wards"].items():
+        by_city[w["city_code"]].append((_norm(w["ward"]), code))
+    for c in by_city:
+        by_city[c].sort(key=lambda x: -len(x[0]))
+    return d["cities"], d["wards"], by_city
+
+
+def extract_ward(city_code: str, address: str, cities, by_city):
+    """(区コード, None) か (None, 市名の後ろの文字列)。
+
+    市が決まった区域の住所から、市名の直後の区名で区を決める。
+    区名が無い（「岡山市建部町…」「熊本市松尾町…」）・再編前の旧区名
+    （浜松市「北区」「浜北区」）は**推し量らずに振り分けない**。数は市のページで開示する。
+    """
+    s = _norm(_PREF_RE.sub("", address or ""))
+    city = _norm(cities[city_code])
+    if not s.startswith(city):
+        return None, s
+    rest = s[len(city):].lstrip("　 ")
+    m = _PAREN_RE.match(rest)
+    if m:
+        rest = m.group(1) + rest[m.end():]
+    for name, code in by_city.get(city_code, ()):
+        if rest.startswith(name):
+            return code, None
+    return None, rest
