@@ -506,6 +506,27 @@ ZERO_MUNI = {"27100": ("大阪府", "大阪市")}
 PHEN_LABEL = {"steep": "急傾斜地の崩壊（がけ崩れ）", "debris": "土石流", "slide": "地すべり"}
 
 
+def _wait_db(limit_s=120):
+    """起動時に khazard-db（docker）が応答するまで待つ。
+
+    2026-10-27 の再起動で、このサービスが DB コンテナより14秒早く立ち上がり、
+    muni_stats を読めずに空のまま動き続けた（地域ページが全部404・/area/ は「0市区町村」・
+    sitemap.xml は4本だけ、が1週間続いた）。user unit の After=docker.service は
+    system 側の docker を待たないので、ここで待つ。
+    """
+    t0 = time.time()
+    while True:
+        try:
+            with conn() as cn, cn.cursor() as cur:
+                cur.execute("SELECT 1 FROM muni_stats LIMIT 1")
+            return True
+        except Exception as e:  # noqa: BLE001
+            if time.time() - t0 > limit_s:
+                print("khazard-db に%d秒つながりません:" % limit_s, e, flush=True)
+                return False
+            time.sleep(3)
+
+
 def _load_muni():
     """muni_stats（scripts/build_muni_stats.py が作る）を起動時に読む。1,603件・数百KB。"""
     out = {}
@@ -519,7 +540,7 @@ def _load_muni():
                 d = dict(zip(cols, r))
                 out[d["code"]] = d
     except Exception as e:  # noqa: BLE001
-        print("muni_stats を読めません（地域ページは主要都市のみ）:", e)
+        print("muni_stats を読めません:", e, flush=True)
     return out
 
 
@@ -571,7 +592,11 @@ try:
 except OSError:
     _WAGAMACHI_MTIME = 0.0
 
+_wait_db()
 MUNI = _load_muni()
+if not MUNI:
+    # 空のまま動くと地域ページ1,700本超が黙って404になる。落として systemd に起動し直させる。
+    raise SystemExit("muni_stats が空です（khazard-db を確認）。起動を中止します")
 for _c in MUNI:
     SLUG_BY_CODE.setdefault(_c, _c)
     CODE_BY_SLUG.setdefault(SLUG_BY_CODE[_c], _c)
@@ -608,7 +633,7 @@ def _load_wards():
             for cc, z, ex in cur.fetchall():
                 unassigned[cc] = {"zones": z, "examples": ex}
     except Exception as e:  # noqa: BLE001
-        print("ward_stats を読めません（区のページは出しません）:", e)
+        print("ward_stats を読めません（区のページは出しません）:", e, flush=True)
         return {}, {}
     for code, w in meta.get("wards", {}).items():
         cc = w["city_code"]
